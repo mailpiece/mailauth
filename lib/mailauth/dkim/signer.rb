@@ -19,7 +19,8 @@ module MailAuth
       # nothing (§5.4.2), so an instance added after signing breaks the signature.
       OVERSIGNED_HEADERS = %w[ from to cc subject date reply-to message-id ].freeze
 
-      def initialize(raw, domain:, selector:, key:, headers: nil, oversign: OVERSIGNED_HEADERS, expires_in: nil, now: Time.now)
+      def initialize(raw, domain:, selector:, key:, headers: nil, oversign: OVERSIGNED_HEADERS, expires_in: nil,
+        now: Time.now, field_name: "DKIM-Signature", instance: nil)
         @message = Message.new(raw)
         @domain = Domain.normalize(domain)
         @selector = Domain.normalize(selector)
@@ -28,6 +29,7 @@ module MailAuth
         @oversign = oversign.map(&:downcase)
         @expires_in = expires_in
         @now = now
+        @field_name, @instance = field_name, instance
       end
 
       def signed_message
@@ -37,7 +39,7 @@ module MailAuth
       def field
         @field ||= begin
           validate
-          unsigned_field + [ signature ].pack("m0").scan(/.{1,72}/).join("\r\n\t") + CRLF
+          signed_field + CRLF
         end
       end
 
@@ -54,15 +56,39 @@ module MailAuth
           KEY_TYPES.fetch(@key.oid) == "rsa" && @key.n.num_bits < MINIMUM_RSA_BITS
         end
 
-        # Ends with b=, where the signature lands — in the signed bytes and the
-        # emitted field alike.
-        def unsigned_field
-          "DKIM-Signature: v=1; " + properties.join("\r\n\t")
+        # The signature lands where b= already stood in the bytes that were
+        # signed, leaving no room to sign one layout and send another.
+        def signed_field
+          unsigned_field.sub(/(?<=[;:\s]b=)/n, encoded(signature))
         end
 
+        # An ARC signature stays on one line where DKIM's folds: the seal signs
+        # this field, and relaxed canonicalization turns a fold in b= into space.
+        def encoded(signature)
+          base64 = [ signature ].pack("m0")
+
+          arc? ? base64 : base64.scan(/.{1,72}/).join("\r\n\t")
+        end
+
+        # An instance number is what makes this an ARC-Message-Signature: DKIM
+        # has no i= of this kind, and ARC has no signature without one.
+        def arc?
+          !@instance.nil?
+        end
+
+        def unsigned_field
+          "#{@field_name}: " + properties.join("\r\n\t")
+        end
+
+        # §4.1.2 makes an AMS this signature under another name: no v=, an i=, and
+        # alphabetical tags — which is where the ARC signing vectors put b=.
         def properties
+          arc? ? arc_properties : dkim_properties
+        end
+
+        def dkim_properties
           [
-            "a=#{algorithm}; c=relaxed/relaxed;",
+            "v=1; a=#{algorithm}; c=relaxed/relaxed;",
             "d=#{@domain};",
             "s=#{@selector}; t=#{@now.to_i};",
             expiration,
@@ -70,6 +96,15 @@ module MailAuth
             "h=#{signed_names.join(":")};",
             "b="
           ].compact
+        end
+
+        def arc_properties
+          [
+            "a=#{algorithm}; b=;",
+            "bh=#{body_hash}; c=relaxed/relaxed;",
+            "d=#{@domain}; h=#{signed_names.join(":")};",
+            "i=#{@instance}; s=#{@selector}; t=#{@now.to_i}"
+          ]
         end
 
         def algorithm

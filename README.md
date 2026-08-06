@@ -2,7 +2,7 @@
 
 ✉️ Email authentication for Ruby.
 
-Verify SPF, DKIM, DMARC, and ARC on received mail, and sign outgoing mail with DKIM.
+Verify SPF, DKIM, DMARC, and ARC on received mail, sign outgoing mail with DKIM, and seal what you forward with ARC.
 
 **mailauth** checks whether a message's sender, signature, and policy all agree, and signs outgoing mail so others can check yours.
 
@@ -16,6 +16,7 @@ For mail receivers deciding whether to trust a message, and senders proving thei
 - DMARC verification (RFC 7489), strict and relaxed alignment
 - Authentication-Results header generation (RFC 8601)
 - ARC verification (RFC 8617), reporting what each hop sealed and left to you to trust
+- ARC sealing (RFC 8617), adding a set that hands the next hop what this one concluded
 - Injectable resolver, so tests run against a hash instead of a network
 
 > Not a spam filter.
@@ -192,6 +193,32 @@ The algorithm comes from the key: an RSA key signs `rsa-sha256`, an Ed25519 key 
 - **now** - the signing instant for `t=`, defaults to `Time.now`
 
 `MailAuth::Dkim::Signer#field` returns just the `DKIM-Signature` field, for callers assembling messages themselves.
+
+Sealing adds three fields rather than one, saying what this hop found before it passed the message on:
+
+```ruby
+result = MailAuth.authenticate(raw_message, ip: ip, mta: "lists.example.org")
+
+sealed = MailAuth::Arc.seal(raw_message,
+  authentication_results: result.authentication_results,
+  chain_status: result.arc.status,
+  domain: "lists.example.org", selector: "arc",
+  key: OpenSSL::PKey.read(File.read("private.pem")))
+# => the message with ARC-Seal, ARC-Message-Signature, and ARC-Authentication-Results prepended
+```
+
+Authenticate first: sealing resolves nothing and re-checks nothing. Both what the set records and the status of the chain it continues are the caller's, which is what makes a seal a statement rather than a second opinion.
+
+- **authentication_results** - the RFC 8601 value with no field name, as `result.authentication_results` returns it
+- **chain_status** - `none`, `pass`, or `fail` for the chain that arrived, from `result.arc.status`
+- **domain**, **selector**, **key** - as for DKIM signing, algorithm again taken from the key
+- **headers** - names for the message signature's `h=`; an ARC name is refused, since the seal signs that signature (RFC 8617 §4.1.2)
+- **oversign** - defaults to none: an oversigned name is one no later hop may add, and a sealed message is one still travelling
+- **now** - the sealing instant for `t=`
+
+The instance number is one above the highest already on the message. A chain someone has sealed `cv=fail` is finished (RFC 8617 §5.1.3): `result.arc` says so, and whether to seal one anyway is yours to decide.
+
+`MailAuth::Arc::Sealer` returns the fields one at a time — `#seal_field`, `#message_signature_field`, `#authentication_results_field` — for callers assembling messages themselves.
 
 ## Testing
 
