@@ -2,6 +2,7 @@ require "mailauth/dkim"
 require "mailauth/arc/chain"
 require "mailauth/arc/message_signature"
 require "mailauth/arc/seal"
+require "mailauth/arc/sealer"
 
 module MailAuth
   # RFC 8617. Records what each hop concluded before forwarding broke SPF/DKIM,
@@ -29,6 +30,14 @@ module MailAuth
     # without that saying anything about the hops it already crossed.
     def self.verify(message, resolver: MailResolver::Resolver.new, now: Time.now)
       Validation.new(message, resolver: resolver).result
+    end
+
+    # Adds an ARC set, seal first so the newest hop reads at the top.
+    # `chain_status` is `Arc.verify(message).status`: a sealer decides nothing.
+    def self.seal(message, authentication_results:, chain_status:, domain:, selector:, key:,
+      headers: nil, oversign: [], now: Time.now)
+      Sealer.new(message, authentication_results:, chain_status:, domain:, selector:, key:,
+        headers:, oversign:, now:).sealed_message
     end
 
     def self.value_of(field)
