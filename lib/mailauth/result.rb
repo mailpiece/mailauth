@@ -103,8 +103,16 @@ module MailAuth
     end
   end
 
-  Result = Data.define(:spf, :dkim, :dmarc, :arc, :authentication_results) do
-    def initialize(spf:, dkim:, dmarc:, authentication_results:, arc: nil)
+  # `name` is the one that resolved back, so it is only ever set on a pass:
+  # a name the reverse zone offered and the forward zone disowned is not a name.
+  IprevResult = Data.define(:status, :name, :comment) do
+    def initialize(status:, name: nil, comment: nil)
+      super
+    end
+  end
+
+  Result = Data.define(:spf, :dkim, :dmarc, :arc, :iprev, :authentication_results) do
+    def initialize(spf:, dkim:, dmarc:, authentication_results:, arc: nil, iprev: nil)
       super
     end
   end

@@ -66,6 +66,7 @@ class MailAuth::DnsFailureTest < MailAuth::TestCase
     LocalNameserver.answering(:servfail) do |resolver|
       result = authenticate(resolver)
 
+      assert_equal MailAuth::Status::TEMPERROR, result.iprev.status
       assert_equal MailAuth::Status::TEMPERROR, result.spf.status
       assert_equal MailAuth::Status::TEMPERROR, result.dkim.status
       assert_equal MailAuth::Status::TEMPERROR, result.dmarc.status

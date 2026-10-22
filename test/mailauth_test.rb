@@ -27,6 +27,18 @@ class MailAuth::AuthenticateTest < MailAuth::TestCase
     assert_equal MailAuth::Status::NONE, result.arc.status
   end
 
+  # The fixture's zone names no address in reverse, which RFC 8601 files as
+  # permerror; a zone that does carries the name through to the header.
+  def test_the_connecting_address_is_resolved_in_reverse
+    assert_equal MailAuth::Status::PERMERROR, authenticate.iprev.status
+
+    result = authenticate(zone: authenticated_zone.merge(PERMITTED_IP => { ptr: [ "mx.football.example.com" ] },
+      "mx.football.example.com" => { a: [ PERMITTED_IP ] }))
+
+    assert_equal MailAuth::Status::PASS, result.iprev.status
+    assert_includes clauses_of(result.authentication_results), "iprev=pass (mx.football.example.com) policy.iprev=#{PERMITTED_IP}"
+  end
+
   # Every verdict travels with the identity it was reached against: an
   # `dmarc=pass` naming the wrong From: domain is worse than no header at all.
   def test_the_header_states_all_three_verdicts_against_their_identities
