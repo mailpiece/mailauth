@@ -17,8 +17,8 @@ module MailAuth
 
     # `header_from` is optional: a DmarcResult carries a verdict, not an
     # identity; pass the From: domain to have it reported as `header.from`.
-    def initialize(spf:, dkim:, dmarc:, arc: nil, mta: nil, header_from: nil)
-      @spf, @dkim, @dmarc, @arc, @mta, @header_from = spf, dkim, dmarc, arc, mta, header_from
+    def initialize(spf:, dkim:, dmarc:, arc: nil, iprev: nil, mta: nil, header_from: nil, ip: nil)
+      @spf, @dkim, @dmarc, @arc, @iprev, @mta, @header_from, @ip = spf, dkim, dmarc, arc, iprev, mta, header_from, ip
     end
 
     # The value alone — everything after "Authentication-Results:" — so the
@@ -41,10 +41,18 @@ module MailAuth
       end
 
       def method_clauses
-        clauses = [ spf_clause, *dkim_clauses, dmarc_clause, arc_clause ].compact
+        clauses = [ iprev_clause, spf_clause, *dkim_clauses, dmarc_clause, arc_clause ].compact
 
         # A header with nothing to report still has to report that.
         clauses.any? ? clauses : [ [ NO_RESULTS ] ]
+      end
+
+      # RFC 8601 §2.7.3 registers the address as the one property, so the name
+      # it resolved to rides along as a comment.
+      def iprev_clause
+        if @iprev
+          [ "iprev=#{@iprev.status}", comment(@iprev.name || @iprev.comment), property("policy.iprev", @ip) ].compact
+        end
       end
 
       def spf_clause

@@ -10,6 +10,7 @@ For mail receivers deciding whether to trust a message, and senders proving thei
 
 **mailauth** handles:
 
+- iprev (RFC 8601 §2.7.3), the connecting address's name confirmed by resolving it back
 - SPF verification (RFC 7208)
 - DKIM verification (RFC 6376), RSA and Ed25519
 - DKIM signing (RFC 6376), RSA and Ed25519, oversigning by default
@@ -51,7 +52,7 @@ Requires Ruby >= 3.4
 
 ```ruby
 result = MailAuth.authenticate(raw_message, ip:, helo:, mail_from:, mta:, resolver:, now:)
-# => #<MailAuth::Result spf:, dkim:, dmarc:, arc:, authentication_results:>
+# => #<MailAuth::Result spf:, dkim:, dmarc:, arc:, iprev:, authentication_results:>
 ```
 
 - **raw_message** - the RFC 822 bytes as they arrived
@@ -76,6 +77,7 @@ puts result.authentication_results
 
 ```ruby
 mx.example.com;
+iprev=pass (mail-sor-f41.google.com) policy.iprev=209.85.220.41;
 spf=pass
 (domain of someone@gmail.com designates 209.85.220.41 as permitted sender)
 smtp.mailfrom=gmail.com;
@@ -86,6 +88,9 @@ dmarc=pass (p=NONE) header.from=gmail.com
 ## Results
 
 ```ruby
+result.iprev.status    # => "pass"
+result.iprev.name      # => "mail-sor-f41.google.com" - the connecting address's name, only once it resolved back
+
 result.spf.status      # => "pass"
 result.spf.domain      # => "gmail.com"
 
@@ -99,15 +104,20 @@ result.dmarc.alignment # => { dkim: true, spf: false }
 
 Every status is one of `pass`, `fail`, `softfail`, `neutral`, `none`, `temperror`, `permerror` - the RFC 8601 vocabulary as plain strings, so a verdict persists without translation.
 
+iprev has no `none`: an address nobody named is a `permerror`, as RFC 8601 files it, and a name that resolves somewhere else is a `fail`. Whoever runs the reverse zone can write any name there; only the forward lookup proves they run the name too.
+
 `status` and `policy` stay separate. A DMARC `fail` under `p=none` and one under `p=reject` are the same failure; only the second is a reason to refuse the mail.
 
 A DKIM signature can `pass` and still carry `under_sized` — the number of canonicalized body bytes past what its `l=` tag covered, content the signature says nothing about and that an attacker could have appended. `nil` unless the message carries an `l=` tag with bytes left uncovered.
 
 ## Individual Checks
 
-Each protocol is usable on its own. SPF needs no message at all, so it can answer at `RCPT TO` time, before any data has arrived:
+Each protocol is usable on its own. iprev needs only the connection, and SPF no message at all, so both can answer at `RCPT TO` time, before any data has arrived:
 
 ```ruby
+MailAuth::Iprev.check(ip: "209.85.220.41")
+# => #<MailAuth::IprevResult status: "pass", name: "mail-sor-f41.google.com", comment: nil>
+
 MailAuth::Spf.check(ip: "209.85.220.41", helo: "mail-sor-f41.google.com",
   mail_from: "someone@gmail.com")
 # => #<MailAuth::SpfResult status: "pass", domain: "gmail.com", lookups: 1, ...>

@@ -11,6 +11,22 @@ class MailAuth::AuthenticationResultsTest < MailAuth::TestCase
       " dmarc=pass (p=REJECT) header.from=example.com", header
   end
 
+  # RFC 8601 §2.7.3 registers the address as the one property; the name rides
+  # along as a comment.
+  def test_an_iprev_result_names_the_host_and_the_address
+    header = results(iprev: MailAuth::IprevResult.new(status: MailAuth::Status::PASS, name: "mail.example.com"),
+      ip: "203.0.113.5", mta: "mx.example.com")
+
+    assert_equal "mx.example.com;\r\n iprev=pass (mail.example.com) policy.iprev=203.0.113.5", header
+  end
+
+  def test_an_iprev_result_without_a_name_carries_its_comment
+    header = results(iprev: MailAuth::IprevResult.new(status: MailAuth::Status::PERMERROR, comment: "no PTR record for 203.0.113.5"),
+      ip: "203.0.113.5", mta: "mx.example.com")
+
+    assert_equal "mx.example.com;\r\n iprev=permerror (no PTR record for 203.0.113.5) policy.iprev=203.0.113.5", header
+  end
+
   def test_a_missing_mta_is_reported_as_unknown
     assert_equal "unknown", results(dmarc: dmarc).split(";").first
   end
@@ -130,9 +146,9 @@ class MailAuth::AuthenticationResultsTest < MailAuth::TestCase
   end
 
   private
-    def results(spf: nil, dkim: nil, dmarc: nil, arc: nil, mta: nil, header_from: nil)
-      MailAuth::AuthenticationResults.new(spf: spf, dkim: dkim, dmarc: dmarc, arc: arc, mta: mta,
-        header_from: header_from).to_s
+    def results(spf: nil, dkim: nil, dmarc: nil, arc: nil, iprev: nil, mta: nil, header_from: nil, ip: nil)
+      MailAuth::AuthenticationResults.new(spf: spf, dkim: dkim, dmarc: dmarc, arc: arc, iprev: iprev, mta: mta,
+        header_from: header_from, ip: ip).to_s
     end
 
     def spf(domain = "sender@example.com")
