@@ -11,6 +11,7 @@
 - DKIM, ARC: a long `h=` costs a lookup per name instead of a pass over every header field
 - A comment inside a From address, as in `ceo@(c)bank.example`, no longer hides its domain
 - Authentication-Results is built from valid UTF-8, so a UTF-8 value beside message bytes or invalid UTF-8 no longer raises
+- DKIM: an encrypted key in a key record is unreadable instead of prompting the terminal for a passphrase
 
 ## 0.6.0
 

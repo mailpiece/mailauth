@@ -1,6 +1,7 @@
 require "test_helper"
 require "json"
 require "openssl"
+require "pty"
 
 class MailAuth::DkimTest < MailAuth::TestCase
   CRLF = "\r\n".b
@@ -82,6 +83,23 @@ class MailAuth::DkimTest < MailAuth::TestCase
     result = verify(signed, resolver: resolver_for(zone_publishing("v=DKIM1; k=rsa; p=bm90LWEta2V5")))
 
     assert_equal "unreadable public key", result.signatures.first.comment
+  end
+
+  # OpenSSL asks the terminal for a passphrase unless it is handed one, so
+  # this runs under a pseudo-terminal, where asking would hang.
+  def test_an_encrypted_key_is_unreadable_without_asking_for_a_passphrase
+    encrypted = RSA_KEY.private_to_pem(OpenSSL::Cipher.new("aes-128-cbc"), "secret")
+    script = <<~RUBY
+      require "mailauth"
+      require "mailresolver/testing"
+      zone = { "s._domainkey.a.example" => { txt: [ "v=DKIM1; p=#{[ encrypted ].pack("m0")}" ] } }
+      MailAuth::Dkim::PublicKey.retrieve(selector: "s", domain: "a.example", algorithm: "rsa",
+        resolver: MailResolver::Testing::FakeResolver.new(zone))
+    RUBY
+
+    output = under_a_terminal(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), "-e", script)
+
+    assert_includes output, "unreadable public key"
   end
 
   def test_revoked_key_is_permerror
@@ -285,6 +303,22 @@ class MailAuth::DkimTest < MailAuth::TestCase
       JSON.parse(fixture("dns.json")).transform_values do |types|
         types.to_h { |type, records| [ type.downcase.to_sym, records.map(&:join) ] }
       end
+    end
+
+    # What a command printed before it exited or went quiet for `timeout`.
+    def under_a_terminal(*command, timeout: 10)
+      read = +""
+
+      PTY.spawn(*command) do |output, _input, pid|
+        read << output.readpartial(4096) while IO.select([ output ], nil, nil, timeout)
+      rescue Errno::EIO
+        # The terminal closes when the command exits.
+      ensure
+        Process.kill("KILL", pid) rescue nil
+        Process.wait(pid)
+      end
+
+      read
     end
 
     def zone_publishing(record)

@@ -34,7 +34,9 @@ module MailAuth
           end
 
           def read(material, algorithm)
-            key = OpenSSL::PKey.read(wrapped(material))
+            # An empty passphrase, so an encrypted key fails rather than
+            # OpenSSL asking the terminal for one.
+            key = OpenSSL::PKey.read(wrapped(material), "")
 
             if KEY_TYPES[key.oid] != algorithm
               raise Malformed, "key is not #{algorithm}"
