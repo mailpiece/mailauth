@@ -79,11 +79,15 @@ module MailAuth
         @domain = @sender.split("@", 2).last.downcase
         @context = Context.new(ip: @ip, sender: @sender, helo: @helo, domain: @domain)
         @budget = Budget.new(resolver, charging: false)
+        @allows_any = false
       end
 
+      # An error leaves the evaluation unfinished, so it reports no `+all`
+      # whatever it had read by then.
       def run
         if checkable?(@domain)
-          result check(@domain)
+          status = check(@domain)
+          result status, allows_any: @allows_any
         else
           result Status::NONE
         end
@@ -120,6 +124,7 @@ module MailAuth
         # if none matched, which is why any `all` stops a record redirecting.
         def check(domain)
           record = Record.fetch(domain, budget: @budget, context: @context.for_domain(domain))
+          @allows_any ||= record.allows_any?
 
           if matched = record.terms.find { |term| matches?(term) }
             QUALIFIERS.fetch(matched.qualifier)
@@ -222,8 +227,8 @@ module MailAuth
           name == target || name.end_with?(".#{target}")
         end
 
-        def result(status, detail = nil)
-          SpfResult.new(status: status, domain: @domain, comment: comment(status, detail), lookups: @budget.lookups)
+        def result(status, detail = nil, allows_any: false)
+          SpfResult.new(status: status, domain: @domain, comment: comment(status, detail), lookups: @budget.lookups, allows_any: allows_any)
         end
 
         def comment(status, detail)
