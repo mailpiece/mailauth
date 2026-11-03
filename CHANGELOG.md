@@ -9,6 +9,7 @@
 - ARC: `claimed` reads only the method opening each result, never comments, quoted strings or properties
 - DMARC, DKIM: an internationalized From domain or `d=` is looked up and reported by its A-label
 - DKIM, ARC: a long `h=` costs a lookup per name instead of a pass over every header field
+- A comment inside a From address, as in `ceo@(c)bank.example`, no longer hides its domain
 
 ## 0.6.0
 

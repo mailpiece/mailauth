@@ -159,6 +159,8 @@ end
 - `permerror` - the record or signature is broken; retrying changes nothing
 - `none` - the domain published no policy, or the message carried no signature
 
+A DMARC `permerror` is not a pass: it is a From with no single domain to check, two fields, two addresses, or one that doesn't parse. Treat it as you would a `fail` under the strictest policy you apply.
+
 ## Resolver
 
 DNS resolution is [mailresolver](https://github.com/mailpiece/mailresolver), a separate gem, injected as `resolver:` everywhere a lookup happens:

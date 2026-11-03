@@ -88,9 +88,10 @@ module MailAuth
       end
 
       # Quoted strings and comments can hold anything, including something that
-      # reads as an address; neither is one.
+      # reads as an address; neither is one. A comment goes without a trace, as
+      # in ceo@(c)bank.example, which is bank.example.
       def unquoted(value)
-        value.gsub(/"(?:\\.|[^"\\])*"/n, " ").gsub(/\((?:\\.|[^()\\])*\)/n, " ")
+        value.gsub(/"(?:\\.|[^"\\])*"/n, " ").gsub(/\((?:\\.|[^()\\])*\)/n, "")
       end
   end
 end
