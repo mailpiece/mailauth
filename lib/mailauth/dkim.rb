@@ -203,17 +203,10 @@ module MailAuth
           signed_fields.map { |field| canonicalize_field(field) + CRLF }.join + canonical_signature_field
         end
 
-        # Takes the last unused instance of each named header, walking upward
-        # through duplicates. Naming a header that isn't present (oversigning)
-        # contributes nothing but forbids one being added later.
+        # Naming a header that isn't present (oversigning) contributes nothing
+        # but forbids one being added later.
         def signed_fields
-          remaining = @message.fields.dup
-
-          signed_header_names.filter_map do |name|
-            if index = remaining.rindex { |field| @message.field_name(field) == name }
-              remaining.delete_at(index)
-            end
-          end
+          @message.fields_signed_by(signed_header_names)
         end
 
         def signed_header_names

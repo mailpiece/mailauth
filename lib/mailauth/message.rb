@@ -34,6 +34,21 @@ module MailAuth
       field.split(":", 2).first.to_s.strip.downcase
     end
 
+    # The fields an h= list names, each name taking the lowest instance not
+    # yet taken and walking upward through duplicates (RFC 6376 §5.4.2). A
+    # name past its count takes nothing. Indexed once, so a long h= costs a
+    # lookup per name rather than a pass over every field.
+    def fields_signed_by(names)
+      taken = Hash.new(0)
+
+      names.filter_map do |name|
+        instances = fields_by_name.fetch(name, [])
+        taken[name] += 1
+
+        instances[-taken[name]] if taken[name] <= instances.length
+      end
+    end
+
     # What DMARC alignment is measured against — quoted display names are
     # stripped first, since `From: "Foo <evil@attacker.example>" <real@bank.example>`
     # must render as bank.example, not the attacker's domain. Several From
@@ -47,6 +62,10 @@ module MailAuth
     end
 
     private
+      def fields_by_name
+        @fields_by_name ||= fields.group_by { |field| field_name(field) }
+      end
+
       # Bare LF becomes CRLF so a message that took a lossy path still
       # canonicalizes as its signer intended; a lone CR is left alone.
       def normalize(raw)

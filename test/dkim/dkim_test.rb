@@ -213,6 +213,17 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal MailAuth::Status::FAIL, verify(both.sub("X-Trace: upper", "X-Trace: rewritten")).status
   end
 
+  # Each name in h= is a lookup, not a pass over every field, so a long h=
+  # against many fields costs the sum of the two rather than the product.
+  def test_a_long_header_list_reads_each_field_name_once
+    headers = HEADERS + Array.new(100) { |index| "X-Filler-#{index}: v" }
+    message = CountingMessage.new(signed(headers:, signed_names: %w[ from ] + %w[ absent ] * 1000))
+
+    MailAuth::Dkim.verify(message, resolver: resolver_for(zone_from_fixture), now: SIGNED_AT + 3600)
+
+    assert_operator message.names_read, :<, headers.length * 10
+  end
+
   def test_signature_that_does_not_cover_from_is_permerror
     message = signed(headers: HEADERS, signed_names: %w[ to subject ])
 
@@ -252,6 +263,15 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal MailAuth::Dkim::MAXIMUM_SIGNATURES, resolver.queries.length
     assert_equal MailAuth::Dkim::MAXIMUM_SIGNATURES + 1, result.signatures.length
     assert_equal "3 more signatures not evaluated", result.signatures.last.comment
+  end
+
+  class CountingMessage < MailAuth::Message
+    attr_reader :names_read
+
+    def field_name(field)
+      @names_read = names_read.to_i + 1
+      super
+    end
   end
 
   private

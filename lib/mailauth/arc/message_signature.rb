@@ -111,16 +111,8 @@ module MailAuth
             canonicalize(@field).sub(/([;:\s]+b=)[^;]*/n, '\1')
         end
 
-        # The last unused instance of each name, walking upward through
-        # duplicates (RFC 6376 §5.4.2).
         def signed_fields
-          remaining = @message.fields.dup
-
-          signed_names.filter_map do |name|
-            if index = remaining.rindex { |field| @message.field_name(field) == name }
-              remaining.delete_at(index)
-            end
-          end
+          @message.fields_signed_by(signed_names)
         end
 
         def signed_names
