@@ -30,6 +30,10 @@ module MailAuth
     # RFC 6376 §3.2: ALPHA *ALNUMPUNC.
     TAG_NAME = /\A[a-zA-Z][a-zA-Z0-9_]*\z/n
 
+    # Letters, digits, hyphens and underscores, 63 to a label and 253 in all.
+    # Anything else in d= or s= names no key a domain can publish.
+    HOST_NAME = /\A(?=.{1,253}\z)[a-z0-9_-]{1,63}(?:\.[a-z0-9_-]{1,63})*\z/i
+
     # RFC 6376 §8.4. Each signature costs a lookup for a key its sender named,
     # and headers are cheap to write, so only the first so many are answered.
     MAXIMUM_SIGNATURES = 10
@@ -62,6 +66,10 @@ module MailAuth
 
     def self.sign(raw, domain:, selector:, key:, headers: nil, oversign: Signer::OVERSIGNED_HEADERS, expires_in: nil, now: Time.now)
       Signer.new(raw, domain:, selector:, key:, headers:, oversign:, expires_in:, now:).signed_message
+    end
+
+    def self.host_name?(name)
+      Domain.normalize(name).match?(HOST_NAME)
     end
 
     # RFC 6376 §3.2: a malformed, repeated, or empty tag invalidates the whole
@@ -135,6 +143,17 @@ module MailAuth
           raise Malformed, "From is not signed" unless signed_header_names.include?("from")
 
           raise Malformed, "invalid l= tag" if @tags["l"] && !@tags["l"].match?(/\A\d+\z/n)
+          raise Malformed, "invalid d= tag" unless Dkim.host_name?(@tags["d"])
+          raise Malformed, "invalid s= tag" unless Dkim.host_name?(@tags["s"])
+
+          # §3.5: the identity is the signing domain or a subdomain of it.
+          raise Malformed, "i= is not within d=" if @tags["i"] && !within_signing_domain?(@tags["i"])
+        end
+
+        def within_signing_domain?(identity)
+          domain = Domain.normalize(identity.rpartition("@").last) if identity.include?("@")
+
+          domain == signing_domain || domain.to_s.end_with?(".#{signing_domain}")
         end
 
         def expired?

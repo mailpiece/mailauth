@@ -259,6 +259,25 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal "From is not signed", verify(message).signatures.first.comment
   end
 
+  def test_a_signing_domain_or_selector_that_is_no_host_name_is_permerror
+    { "d=#{DOMAIN};" => "d=x, bank.example.attacker.example;", "s=test;" => "s=te\\st;" }.each do |tag, forged|
+      signature = verify(signed.sub(tag, forged)).signatures.first
+
+      assert_equal MailAuth::Status::PERMERROR, signature.status
+      assert_equal "invalid #{forged[0]}= tag", signature.comment
+    end
+  end
+
+  def test_an_identity_outside_the_signing_domain_is_permerror
+    assert_equal MailAuth::Status::PASS, verify(signed(tags: { "i" => "joe@mail.#{DOMAIN}" })).status
+
+    [ "joe@elsewhere.example", "joe@not#{DOMAIN}", "joe" ].each do |identity|
+      signature = verify(signed(tags: { "i" => identity })).signatures.first
+
+      assert_equal "i= is not within d=", signature.comment
+    end
+  end
+
   def test_unsupported_algorithm_is_permerror
     message = signed.sub("a=rsa-sha256", "a=rsa-md5")
 

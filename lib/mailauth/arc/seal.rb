@@ -41,6 +41,8 @@ module MailAuth
           raise Dkim::Malformed, "unsupported algorithm #{@tags["a"]}" unless Arc.signing_algorithm?(@tags["a"])
           raise Dkim::Malformed, "invalid cv= tag" unless CHAIN_STATUSES.include?(@tags["cv"].downcase)
           raise Dkim::Malformed, "invalid t= tag" if @tags["t"] && !@tags["t"].match?(/\A\d+\z/n)
+          raise Dkim::Malformed, "invalid d= tag" unless Dkim.host_name?(@tags["d"])
+          raise Dkim::Malformed, "invalid s= tag" unless Dkim.host_name?(@tags["s"])
         end
 
         def verified?
