@@ -19,8 +19,11 @@ module MailAuth
     end
   end
 
-  SpfResult = Data.define(:status, :domain, :comment, :lookups) do
-    def initialize(status:, domain: nil, comment: nil, lookups: 0)
+  # `allows_any` says a record read on the way to the verdict carries `+all`,
+  # letting every host on the internet pass: whatever the status, the domain
+  # vouched for no one in particular.
+  SpfResult = Data.define(:status, :domain, :comment, :lookups, :allows_any) do
+    def initialize(status:, domain: nil, comment: nil, lookups: 0, allows_any: false)
       super
     end
   end

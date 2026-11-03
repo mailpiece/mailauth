@@ -93,6 +93,7 @@ result.iprev.name      # => "mail-sor-f41.google.com" - the connecting address's
 
 result.spf.status      # => "pass"
 result.spf.domain      # => "gmail.com"
+result.spf.allows_any  # => false - true when a record read on the way says `+all`
 
 result.dkim.status     # => "pass" - the best of every signature on the message
 result.dkim.signatures # => [#<MailAuth::Signature status: "pass", domain: "gmail.com", ...>]
@@ -107,6 +108,8 @@ Every status is one of `pass`, `fail`, `softfail`, `neutral`, `none`, `temperror
 iprev has no `none`: an address nobody named is a `permerror`, as RFC 8601 files it, and a name that resolves somewhere else is a `fail`. Whoever runs the reverse zone can write any name there; only the forward lookup proves they run the name too.
 
 `status` and `policy` stay separate. A DMARC `fail` under `p=none` and one under `p=reject` are the same failure; only the second is a reason to refuse the mail.
+
+An SPF `pass` from a record carrying `+all`, or a bare `all`, proves nothing: the domain lets every host on the internet send as it. `allows_any` says so, for the top record and every `include` or `redirect` target actually read; an `include` after the mechanism that matched is never fetched, so it never counts. The status stays what the RFC makes it, and a check that ends in an error or finds no record reports `false`.
 
 A DKIM signature can `pass` and still carry `under_sized` — the number of canonicalized body bytes past what its `l=` tag covered, content the signature says nothing about and that an attacker could have appended. `nil` unless the message carries an `l=` tag with bytes left uncovered.
 

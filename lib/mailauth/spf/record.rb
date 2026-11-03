@@ -57,6 +57,11 @@ module MailAuth
         parse
       end
 
+      # A bare `all` counts: an unqualified mechanism is a `+`.
+      def allows_any?
+        terms.any? { |term| term.mechanism == :all && term.qualifier == "+" }
+      end
+
       private
         def parse
           raise PermError, "non-ASCII characters in record" unless @text.match?(PRINTABLE)

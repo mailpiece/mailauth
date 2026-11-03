@@ -363,6 +363,38 @@ class MailAuth::SpfTest < MailAuth::TestCase
     assert_includes spf("v=spf1 moo").comment, "permanent error"
   end
 
+  def test_a_record_with_a_pass_all_allows_any_host
+    assert spf("v=spf1 +all").allows_any
+    assert spf("v=spf1 all").allows_any
+    assert spf("v=spf1 ip4:192.0.2.1 +all").allows_any
+  end
+
+  def test_any_other_all_or_none_allows_no_host
+    refute spf("v=spf1 -all").allows_any
+    refute spf("v=spf1 ~all").allows_any
+    refute spf("v=spf1 ?all").allows_any
+    refute spf("v=spf1 ip4:192.0.2.1").allows_any
+  end
+
+  def test_an_evaluated_include_or_redirect_with_a_pass_all_allows_any_host
+    assert spf("v=spf1 include:sub.example.com -all", ip: "198.51.100.1",
+      zone: spf_zone("sub.example.com", "v=spf1 +all")).allows_any
+    assert spf("v=spf1 redirect=sub.example.com", zone: spf_zone("sub.example.com", "v=spf1 all")).allows_any
+  end
+
+  def test_an_include_never_reached_is_not_looked_at
+    result = spf("v=spf1 ip4:192.0.2.1 include:sub.example.com -all", zone: spf_zone("sub.example.com", "v=spf1 +all"))
+
+    assert_equal MailAuth::Status::PASS, result.status
+    refute result.allows_any
+  end
+
+  def test_an_error_or_no_record_allows_no_host
+    refute spf(nil).allows_any
+    refute spf("v=spf1 +all moo").allows_any
+    refute spf("v=spf1 a +all", zone: { "example.com" => { a: :timeout } }).allows_any
+  end
+
   private
     # The domain under test is always example.com, so a record is all a case
     # usually has to say.
