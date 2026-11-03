@@ -44,6 +44,14 @@ class MailAuth::DmarcTest < MailAuth::TestCase
     assert_equal "reject", result.policy
   end
 
+  def test_two_dmarc_records_at_a_subdomain_do_not_fall_back_to_the_organizational_domain
+    result = check("mail.example.com", record("p=reject").merge(
+      zone("_dmarc.mail.example.com" => [ "v=DMARC1; p=reject", "v=DMARC1; p=none" ])))
+
+    assert_equal MailAuth::Status::NONE, result.status
+    assert_nil result.policy
+  end
+
   def test_two_dmarc_records_are_none
     result = check("example.com", zone("_dmarc.example.com" => [ "v=DMARC1; p=reject", "v=DMARC1; p=none" ]))
 

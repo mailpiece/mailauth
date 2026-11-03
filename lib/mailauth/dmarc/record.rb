@@ -15,21 +15,30 @@ module MailAuth
       class << self
         # DNS failures are raised rather than swallowed: "we couldn't ask" is
         # a different answer from "there is nothing there".
+        #
+        # Two policies are as good as none: RFC 7489 §6.6.3 would rather apply
+        # nothing than guess which one the domain meant, and asks no parent.
         def find(domain, resolver:)
-          at(domain, resolver: resolver) || at_organizational_domain(domain, resolver: resolver)
+          texts = texts_at(domain, resolver)
+
+          if texts.length > 1
+            nil
+          else
+            usable(texts, organizational: false) || at_organizational_domain(domain, resolver: resolver)
+          end
         end
 
         private
-          def at(domain, resolver:, organizational: false)
-            texts = resolver.txt("_dmarc.#{domain}").map(&:strip).grep(DMARC1)
+          def texts_at(domain, resolver)
+            resolver.txt("_dmarc.#{domain}").map(&:strip).grep(DMARC1)
+          rescue MailResolver::NotFound
+            []
+          end
 
-            # Two policies are as good as none: RFC 7489 §6.6.3 would rather
-            # apply nothing than guess which one the domain meant.
+          def usable(texts, organizational:)
             if texts.one? && (record = new(texts.first, organizational: organizational)).usable?
               record
             end
-          rescue MailResolver::NotFound
-            nil
           end
 
           # A subdomain with no record of its own — or one too broken to apply —
@@ -38,7 +47,7 @@ module MailAuth
           def at_organizational_domain(domain, resolver:)
             organizational = OrganizationalDomain.of(domain)
 
-            at(organizational, resolver: resolver, organizational: true) unless organizational == domain
+            usable(texts_at(organizational, resolver), organizational: true) unless organizational == domain
           end
       end
 

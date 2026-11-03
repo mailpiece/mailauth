@@ -16,6 +16,7 @@
 - DKIM, ARC: a `d=` or `s=` that is not a host name, or a DKIM `i=` outside `d=`, is a permerror
 - DKIM: a `t=` up to five minutes in the future is allowed for clock drift
 - ARC: sealing a message already at 50 sets returns it unsealed instead of raising
+- DMARC: two records at a subdomain end discovery instead of falling back to the organizational domain
 
 ## 0.6.0
 
