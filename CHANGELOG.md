@@ -15,6 +15,7 @@
 - DKIM, ARC: the body is canonicalized once per form instead of once per signature
 - DKIM, ARC: a `d=` or `s=` that is not a host name, or a DKIM `i=` outside `d=`, is a permerror
 - DKIM: a `t=` up to five minutes in the future is allowed for clock drift
+- ARC: sealing a message already at 50 sets returns it unsealed instead of raising
 
 ## 0.6.0
 

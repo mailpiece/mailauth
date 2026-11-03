@@ -234,7 +234,7 @@ Authenticate first: sealing resolves nothing and re-checks nothing. Both what th
 - **oversign** - defaults to none: an oversigned name is one no later hop may add, and a sealed message is one still travelling
 - **now** - the sealing instant for `t=`
 
-The instance number is one above the highest already on the message. A chain someone has sealed `cv=fail` is finished (RFC 8617 §5.1.3): `result.arc` says so, and whether to seal one anyway is yours to decide.
+The instance number is one above the highest already on the message, and a message already at 50 comes back unsealed, since a 51st set is one every validator fails. A chain someone has sealed `cv=fail` is finished (RFC 8617 §5.1.3): `result.arc` says so, and whether to seal one anyway is yours to decide.
 
 `MailAuth::Arc::Sealer` returns the fields one at a time — `#seal_field`, `#message_signature_field`, `#authentication_results_field` — for callers assembling messages themselves.
 
