@@ -321,6 +321,15 @@ class MailAuth::SpfTest < MailAuth::TestCase
     assert_expansion "last.first", "%{lr-}", sender: "first-last@example.com"
   end
 
+  def test_macro_digits_past_the_label_count_keep_every_label
+    assert_expansion "example.com", "%{d5}"
+    assert_expansion "example.com", "%{d99999999999999999999}"
+  end
+
+  def test_macro_digits_of_zero_are_a_permanent_error
+    assert_status MailAuth::Status::PERMERROR, spf("v=spf1 exists:%{d0}.example.com -all")
+  end
+
   def test_macros_expand_an_ipv6_client_one_nibble_per_label
     assert_expansion "2.0.0.1.0.d.b.8.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1", "%{i}", ip: "2001:db8::1"
     assert_expansion "ip6", "%{v}", ip: "2001:db8::1"
