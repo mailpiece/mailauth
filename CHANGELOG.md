@@ -10,6 +10,7 @@
 - DMARC, DKIM: an internationalized From domain or `d=` is looked up and reported by its A-label
 - DKIM, ARC: a long `h=` costs a lookup per name instead of a pass over every header field
 - A comment inside a From address, as in `ceo@(c)bank.example`, no longer hides its domain
+- Authentication-Results is built from valid UTF-8, so a UTF-8 value beside message bytes or invalid UTF-8 no longer raises
 
 ## 0.6.0
 

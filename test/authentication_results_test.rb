@@ -125,6 +125,24 @@ class MailAuth::AuthenticationResultsTest < MailAuth::TestCase
     assert_equal 2, results(dkim: dkim(signature)).split("\r\n").length
   end
 
+  # Message bytes arrive as BINARY, an authserv-id or envelope as UTF-8.
+  def test_values_of_different_encodings_join_as_utf8
+    signature = MailAuth::Signature.new(status: MailAuth::Status::PERMERROR, algorithm: "\xC3\xA9".b,
+      comment: "unsupported algorithm \xC3\xA9".b)
+    header = results(dkim: dkim(signature), mta: "mx.bücher.example")
+
+    assert_equal Encoding::UTF_8, header.encoding
+    assert_includes header, "header.a=\"é\""
+    assert_includes header, "\"mx.bücher.example\""
+  end
+
+  def test_invalid_utf8_is_replaced_rather_than_raising
+    header = results(spf: spf("\xff@x.example"), mta: "mx.example")
+
+    assert_equal Encoding::UTF_8, header.encoding
+    assert_includes header, "smtp.mailfrom=\"\uFFFD@x.example\""
+  end
+
   # Folding
 
   def test_long_headers_fold_within_the_line_width
