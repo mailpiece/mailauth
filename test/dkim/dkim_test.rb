@@ -122,6 +122,13 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal "signature timestamp in the future", verify(message).signatures.first.comment
   end
 
+  def test_a_signer_clock_a_few_minutes_ahead_is_allowed
+    now = SIGNED_AT + 3600
+
+    assert_equal MailAuth::Status::PASS, verify(signed(tags: { "t" => (now + 200).to_i }), now:).status
+    assert_equal MailAuth::Status::FAIL, verify(signed(tags: { "t" => (now + 400).to_i }), now:).status
+  end
+
   def test_every_canonicalization_combination_verifies
     %w[ simple relaxed ].product(%w[ simple relaxed ]).each do |header, body|
       canonicalization = "#{header}/#{body}"

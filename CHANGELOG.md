@@ -14,6 +14,7 @@
 - DKIM: an encrypted key in a key record is unreadable instead of prompting the terminal for a passphrase
 - DKIM, ARC: the body is canonicalized once per form instead of once per signature
 - DKIM, ARC: a `d=` or `s=` that is not a host name, or a DKIM `i=` outside `d=`, is a permerror
+- DKIM: a `t=` up to five minutes in the future is allowed for clock drift
 
 ## 0.6.0
 

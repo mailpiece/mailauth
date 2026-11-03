@@ -38,6 +38,9 @@ module MailAuth
     # and headers are cheap to write, so only the first so many are answered.
     MAXIMUM_SIGNATURES = 10
 
+    # Seconds a signer's clock may run ahead of ours, OpenDKIM's default.
+    CLOCK_DRIFT = 300
+
     # Shorter RSA keys are factorable cheaply enough to prove nothing.
     MINIMUM_RSA_BITS = 1024
 
@@ -165,7 +168,7 @@ module MailAuth
         end
 
         def postdated?
-          signed_at && signed_at > @now
+          signed_at && signed_at > @now + CLOCK_DRIFT
         end
 
         def signed_at
