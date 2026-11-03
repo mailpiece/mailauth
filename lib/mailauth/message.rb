@@ -34,6 +34,12 @@ module MailAuth
       field.split(":", 2).first.to_s.strip.downcase
     end
 
+    # Each DKIM signature and ARC hop hashes the body, and most of them in the
+    # same form, so each form is computed once.
+    def canonical_body(form)
+      (@canonical_bodies ||= {})[form] ||= Dkim::Canonicalization.body(body, form)
+    end
+
     # The fields an h= list names, each name taking the lowest instance not
     # yet taken and walking upward through duplicates (RFC 6376 §5.4.2). A
     # name past its count takes nothing. Indexed once, so a long h= costs a

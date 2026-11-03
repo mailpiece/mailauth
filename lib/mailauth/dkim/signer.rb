@@ -116,7 +116,7 @@ module MailAuth
         end
 
         def body_hash
-          [ OpenSSL::Digest::SHA256.digest(Canonicalization.body(@message.body, "relaxed")) ].pack("m0")
+          [ OpenSSL::Digest::SHA256.digest(@message.canonical_body("relaxed")) ].pack("m0")
         end
 
         def signed_names

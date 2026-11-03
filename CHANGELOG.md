@@ -12,6 +12,7 @@
 - A comment inside a From address, as in `ceo@(c)bank.example`, no longer hides its domain
 - Authentication-Results is built from valid UTF-8, so a UTF-8 value beside message bytes or invalid UTF-8 no longer raises
 - DKIM: an encrypted key in a key record is unreadable instead of prompting the terminal for a passphrase
+- DKIM, ARC: the body is canonicalized once per form instead of once per signature
 
 ## 0.6.0
 

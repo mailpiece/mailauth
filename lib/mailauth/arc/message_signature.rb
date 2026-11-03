@@ -87,7 +87,7 @@ module MailAuth
         end
 
         def canonical_body
-          @canonical_body ||= Dkim::Canonicalization.body(@message.body, body_canonicalization)
+          @message.canonical_body(body_canonicalization)
         end
 
         def verified?

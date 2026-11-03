@@ -216,6 +216,16 @@ class MailAuth::DkimTest < MailAuth::TestCase
     end
   end
 
+  def test_signatures_in_one_canonicalization_read_the_body_once
+    message = signed
+    crowd = Array.new(3) { |index| message.lines.first.chomp.sub("s=test;", "s=other#{index};") }
+    message = CountingMessage.new(crowd.join(CRLF) + CRLF + message)
+
+    MailAuth::Dkim.verify(message, resolver: resolver_for(zone_from_fixture), now: SIGNED_AT + 3600)
+
+    assert_equal 1, message.bodies_read
+  end
+
   # h= is walked bottom-up, so a name listed once covers the *lowest* instance
   # of that header and a name listed twice walks up to the one above it.
   def test_duplicate_header_names_are_taken_from_the_bottom_up
@@ -284,10 +294,15 @@ class MailAuth::DkimTest < MailAuth::TestCase
   end
 
   class CountingMessage < MailAuth::Message
-    attr_reader :names_read
+    attr_reader :names_read, :bodies_read
 
     def field_name(field)
       @names_read = names_read.to_i + 1
+      super
+    end
+
+    def body
+      @bodies_read = bodies_read.to_i + 1
       super
     end
   end
