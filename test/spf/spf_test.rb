@@ -395,6 +395,66 @@ class MailAuth::SpfTest < MailAuth::TestCase
     refute spf("v=spf1 a +all", zone: { "example.com" => { a: :timeout } }).allows_any
   end
 
+  # Trimmed at the ends like a DMARC record, untouched within.
+  def test_the_result_carries_the_record_as_published
+    assert_equal "v=spf1 ip4:192.0.2.1 -all", spf("v=spf1 ip4:192.0.2.1 -all").record
+    assert_equal "v=spf1 -all", spf("v=spf1 -all").record
+    assert_equal "V=SPF1  ?all", spf(" V=SPF1  ?all ").record
+  end
+
+  def test_a_redirect_carries_the_sender_s_record_rather_than_its_target_s
+    result = spf("v=spf1 redirect=sub.example.com", zone: spf_zone("sub.example.com", "v=spf1 ip4:192.0.2.1 -all"))
+
+    assert_equal MailAuth::Status::PASS, result.status
+    assert_equal "v=spf1 redirect=sub.example.com", result.record
+  end
+
+  def test_an_include_carries_the_sender_s_record_rather_than_the_included_one
+    result = spf("v=spf1 include:sub.example.com -all", zone: spf_zone("sub.example.com", "v=spf1 ip4:192.0.2.1 -all"))
+
+    assert_equal "v=spf1 include:sub.example.com -all", result.record
+  end
+
+  def test_no_record_is_carried_when_none_was_fetched
+    assert_nil spf(nil).record
+    assert_nil spf("some other TXT record entirely").record
+    assert_nil spf(nil, zone: { "example.com" => { txt: :timeout } }).record
+    assert_nil spf(nil, helo: "OEMCOMPUTER", mail_from: "", zone: spf_zone("oemcomputer", "v=spf1 -all")).record
+  end
+
+  def test_a_bounce_carries_the_helo_name_s_record
+    result = spf(nil, mail_from: "", zone: spf_zone("mail.example.net", "v=spf1 -all"))
+
+    assert_equal "mail.example.net", result.domain
+    assert_equal "v=spf1 -all", result.record
+  end
+
+  # Line breaks, escapes and high bytes would ride the record into a log or a
+  # header.
+  def test_a_record_that_is_not_printable_ascii_is_not_carried
+    [ "v=spf1 -all\r\nX-Injected: yes", "v=spf1 \e[31m-all", "v=spf1 café -all" ].each do |record|
+      result = spf(record)
+
+      assert_status MailAuth::Status::PERMERROR, result
+      assert_nil result.record
+    end
+  end
+
+  # Two records are a domain that hasn't said which it means, so neither is
+  # its record.
+  def test_two_spf_records_carry_neither
+    resolver = resolver_for("example.com" => { txt: [ "v=spf1 -all", "v=spf1 +all" ] })
+
+    assert_nil MailAuth::Spf.check(ip: "192.0.2.1", mail_from: "sender@example.com", resolver: resolver).record
+  end
+
+  # Fetched, then found broken or failing partway: the domain still published it.
+  def test_an_error_after_the_record_was_fetched_still_carries_it
+    assert_equal "v=spf1 moo", spf("v=spf1 moo").record
+    assert_equal "v=spf1 redirect=sub.example.com", spf("v=spf1 redirect=sub.example.com").record
+    assert_equal "v=spf1 a -all", spf("v=spf1 a -all", zone: { "example.com" => { a: :timeout } }).record
+  end
+
   private
     # The domain under test is always example.com, so a record is all a case
     # usually has to say.

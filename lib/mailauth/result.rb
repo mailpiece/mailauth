@@ -21,9 +21,10 @@ module MailAuth
 
   # `allows_any` says a record read on the way to the verdict carries `+all`,
   # letting every host on the internet pass: whatever the status, the domain
-  # vouched for no one in particular.
-  SpfResult = Data.define(:status, :domain, :comment, :lookups, :allows_any) do
-    def initialize(status:, domain: nil, comment: nil, lookups: 0, allows_any: false)
+  # vouched for no one in particular. `record` is the checked domain's own SPF
+  # record as published, not one it includes or redirects to.
+  SpfResult = Data.define(:status, :domain, :comment, :lookups, :allows_any, :record) do
+    def initialize(status:, domain: nil, comment: nil, lookups: 0, allows_any: false, record: nil)
       super
     end
   end

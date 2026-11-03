@@ -34,14 +34,15 @@ module MailAuth
       # been mangled somewhere between its author and us.
       PRINTABLE = /\A[\x20-\x7e]*\z/
 
-      # Zero is not an error but an answer — the domain publishes no policy.
-      # Two is: nothing chooses between them.
-      def self.fetch(domain, budget:, context:)
+      # The text as published, not yet parsed. Zero is not an error but an
+      # answer — the domain publishes no policy. Two is: nothing chooses
+      # between them.
+      def self.fetch(domain, budget:)
         records = budget.txt(domain).select { |record| record.strip.split(/\s+/).first&.downcase == VERSION }
 
         case records.length
         when 0 then raise NoRecord, "no SPF record for #{domain}"
-        when 1 then new(records.first, context)
+        when 1 then records.first
         else raise PermError, "#{records.length} SPF records for #{domain}"
         end
       end
