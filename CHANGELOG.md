@@ -3,6 +3,7 @@
 ## Unreleased
 
 - SPF: `allows_any`, true when a record read during the check carries `+all` and so lets any host pass
+- `SpfResult#record`: the checked domain's own SPF record as published
 
 ## 0.6.0
 

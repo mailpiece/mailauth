@@ -123,7 +123,12 @@ module MailAuth
         # check_host() itself. First match decides; `redirect` is consulted only
         # if none matched, which is why any `all` stops a record redirecting.
         def check(domain)
-          record = Record.fetch(domain, budget: @budget, context: @context.for_domain(domain))
+          text = Record.fetch(domain, budget: @budget)
+          # Nothing is included or redirected to before the checked domain's own
+          # record parses, so the first one fetched is always theirs. Text that
+          # isn't printable ASCII is never carried out to a log or a header.
+          @record ||= text.strip if text.match?(Record::PRINTABLE)
+          record = Record.new(text, @context.for_domain(domain))
           @allows_any ||= record.allows_any?
 
           if matched = record.terms.find { |term| matches?(term) }
@@ -228,7 +233,8 @@ module MailAuth
         end
 
         def result(status, detail = nil, allows_any: false)
-          SpfResult.new(status: status, domain: @domain, comment: comment(status, detail), lookups: @budget.lookups, allows_any: allows_any)
+          SpfResult.new(status: status, domain: @domain, comment: comment(status, detail), lookups: @budget.lookups,
+            allows_any: allows_any, record: @record)
         end
 
         def comment(status, detail)

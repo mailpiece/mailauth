@@ -94,6 +94,7 @@ result.iprev.name      # => "mail-sor-f41.google.com" - the connecting address's
 result.spf.status      # => "pass"
 result.spf.domain      # => "gmail.com"
 result.spf.allows_any  # => false - true when a record read on the way says `+all`
+result.spf.record      # => "v=spf1 redirect=_spf.google.com" - its own record as published, not the one it redirects to
 
 result.dkim.status     # => "pass" - the best of every signature on the message
 result.dkim.signatures # => [#<MailAuth::Signature status: "pass", domain: "gmail.com", ...>]
@@ -104,6 +105,8 @@ result.dmarc.alignment # => { dkim: true, spf: false }
 ```
 
 Every status is one of `pass`, `fail`, `softfail`, `neutral`, `none`, `temperror`, `permerror` - the RFC 8601 vocabulary as plain strings, so a verdict persists without translation.
+
+`record` is the published text with its outer whitespace trimmed, as DMARC's is. It is nil when the domain publishes no SPF record or two, the fetch fails, or the text isn't printable ASCII; unlike `allows_any`, it is kept when the check errs after the fetch.
 
 iprev has no `none`: an address nobody named is a `permerror`, as RFC 8601 files it, and a name that resolves somewhere else is a `fail`. Whoever runs the reverse zone can write any name there; only the forward lookup proves they run the name too.
 
