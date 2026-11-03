@@ -17,6 +17,15 @@ class MailAuth::DomainTest < MailAuth::TestCase
     assert_equal MailAuth::Domain.normalize("münchen.example"), MailAuth::Domain.normalize("xn--mnchen-3ya.example")
   end
 
+  # Header bytes reach here as BINARY, the way a message arrives.
+  def test_converts_a_binary_u_label_to_its_a_label
+    assert_equal "xn--bcher-kva.example", MailAuth::Domain.normalize("bücher.example".b)
+  end
+
+  def test_bytes_that_are_not_utf8_are_kept_rather_than_scrubbed
+    refute_equal "bank.example", MailAuth::Domain.normalize("ban\xffk.example".b)
+  end
+
   def test_a_name_punycode_cannot_encode_survives_rather_than_raising
     assert_kind_of String, MailAuth::Domain.normalize("\xff\xfe.example")
   end

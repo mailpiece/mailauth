@@ -1,3 +1,5 @@
+require "mailauth/domain"
+
 module MailAuth
   # A received message, split once into the parts every check needs. Binary
   # throughout: DKIM hashes bytes, so transcoding changes the answer.
@@ -32,6 +34,27 @@ module MailAuth
       field.split(":", 2).first.to_s.strip.downcase
     end
 
+    # Each DKIM signature and ARC hop hashes the body, and most of them in the
+    # same form, so each form is computed once.
+    def canonical_body(form)
+      (@canonical_bodies ||= {})[form] ||= Dkim::Canonicalization.body(body, form)
+    end
+
+    # The fields an h= list names, each name taking the lowest instance not
+    # yet taken and walking upward through duplicates (RFC 6376 §5.4.2). A
+    # name past its count takes nothing. Indexed once, so a long h= costs a
+    # lookup per name rather than a pass over every field.
+    def fields_signed_by(names)
+      taken = Hash.new(0)
+
+      names.filter_map do |name|
+        instances = fields_by_name.fetch(name, [])
+        taken[name] += 1
+
+        instances[-taken[name]] if taken[name] <= instances.length
+      end
+    end
+
     # What DMARC alignment is measured against — quoted display names are
     # stripped first, since `From: "Foo <evil@attacker.example>" <real@bank.example>`
     # must render as bank.example, not the attacker's domain. Several From
@@ -40,11 +63,15 @@ module MailAuth
       addresses = from_addresses
 
       if addresses.one?
-        addresses.first.downcase.chomp(".")
+        Domain.normalize(addresses.first)
       end
     end
 
     private
+      def fields_by_name
+        @fields_by_name ||= fields.group_by { |field| field_name(field) }
+      end
+
       # Bare LF becomes CRLF so a message that took a lossy path still
       # canonicalizes as its signer intended; a lone CR is left alone.
       def normalize(raw)
@@ -67,9 +94,10 @@ module MailAuth
       end
 
       # Quoted strings and comments can hold anything, including something that
-      # reads as an address; neither is one.
+      # reads as an address; neither is one. A comment goes without a trace, as
+      # in ceo@(c)bank.example, which is bank.example.
       def unquoted(value)
-        value.gsub(/"(?:\\.|[^"\\])*"/n, " ").gsub(/\((?:\\.|[^()\\])*\)/n, " ")
+        value.gsub(/"(?:\\.|[^"\\])*"/n, " ").gsub(/\((?:\\.|[^()\\])*\)/n, "")
       end
   end
 end

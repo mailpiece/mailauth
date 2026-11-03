@@ -1,6 +1,7 @@
 require "test_helper"
 require "json"
 require "openssl"
+require "pty"
 
 class MailAuth::DkimTest < MailAuth::TestCase
   CRLF = "\r\n".b
@@ -84,6 +85,23 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal "unreadable public key", result.signatures.first.comment
   end
 
+  # OpenSSL asks the terminal for a passphrase unless it is handed one, so
+  # this runs under a pseudo-terminal, where asking would hang.
+  def test_an_encrypted_key_is_unreadable_without_asking_for_a_passphrase
+    encrypted = RSA_KEY.private_to_pem(OpenSSL::Cipher.new("aes-128-cbc"), "secret")
+    script = <<~RUBY
+      require "mailauth"
+      require "mailresolver/testing"
+      zone = { "s._domainkey.a.example" => { txt: [ "v=DKIM1; p=#{[ encrypted ].pack("m0")}" ] } }
+      MailAuth::Dkim::PublicKey.retrieve(selector: "s", domain: "a.example", algorithm: "rsa",
+        resolver: MailResolver::Testing::FakeResolver.new(zone))
+    RUBY
+
+    output = under_a_terminal(RbConfig.ruby, "-I", File.expand_path("../../lib", __dir__), "-e", script)
+
+    assert_includes output, "unreadable public key"
+  end
+
   def test_revoked_key_is_permerror
     result = verify(signed, resolver: resolver_for(zone_publishing("v=DKIM1; k=rsa; p=")))
 
@@ -102,6 +120,13 @@ class MailAuth::DkimTest < MailAuth::TestCase
     message = signed(tags: { "t" => (SIGNED_AT + 7200).to_i })
 
     assert_equal "signature timestamp in the future", verify(message).signatures.first.comment
+  end
+
+  def test_a_signer_clock_a_few_minutes_ahead_is_allowed
+    now = SIGNED_AT + 3600
+
+    assert_equal MailAuth::Status::PASS, verify(signed(tags: { "t" => (now + 200).to_i }), now:).status
+    assert_equal MailAuth::Status::FAIL, verify(signed(tags: { "t" => (now + 400).to_i }), now:).status
   end
 
   def test_every_canonicalization_combination_verifies
@@ -184,6 +209,30 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal appended.bytesize, signature.under_sized
   end
 
+  def test_an_internationalized_signing_domain_is_looked_up_by_its_a_label
+    assert_equal "sel._domainkey.xn--bcher-kva.example",
+      MailAuth::Dkim::PublicKey.name_for(selector: "sel", domain: "bücher.example".b)
+  end
+
+  def test_body_length_tag_past_the_body_is_permerror
+    [ BODY.bytesize + 1, 10**23 ].each do |limit|
+      signature = verify(signed(tags: { "l" => limit })).signatures.first
+
+      assert_equal MailAuth::Status::PERMERROR, signature.status
+      assert_equal "l= exceeds the body length", signature.comment
+    end
+  end
+
+  def test_signatures_in_one_canonicalization_read_the_body_once
+    message = signed
+    crowd = Array.new(3) { |index| message.lines.first.chomp.sub("s=test;", "s=other#{index};") }
+    message = CountingMessage.new(crowd.join(CRLF) + CRLF + message)
+
+    MailAuth::Dkim.verify(message, resolver: resolver_for(zone_from_fixture), now: SIGNED_AT + 3600)
+
+    assert_equal 1, message.bodies_read
+  end
+
   # h= is walked bottom-up, so a name listed once covers the *lowest* instance
   # of that header and a name listed twice walks up to the one above it.
   def test_duplicate_header_names_are_taken_from_the_bottom_up
@@ -199,11 +248,41 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal MailAuth::Status::FAIL, verify(both.sub("X-Trace: upper", "X-Trace: rewritten")).status
   end
 
+  # Each name in h= is a lookup, not a pass over every field, so a long h=
+  # against many fields costs the sum of the two rather than the product.
+  def test_a_long_header_list_reads_each_field_name_once
+    headers = HEADERS + Array.new(100) { |index| "X-Filler-#{index}: v" }
+    message = CountingMessage.new(signed(headers:, signed_names: %w[ from ] + %w[ absent ] * 1000))
+
+    MailAuth::Dkim.verify(message, resolver: resolver_for(zone_from_fixture), now: SIGNED_AT + 3600)
+
+    assert_operator message.names_read, :<, headers.length * 10
+  end
+
   def test_signature_that_does_not_cover_from_is_permerror
     message = signed(headers: HEADERS, signed_names: %w[ to subject ])
 
     assert_equal MailAuth::Status::PERMERROR, verify(message).status
     assert_equal "From is not signed", verify(message).signatures.first.comment
+  end
+
+  def test_a_signing_domain_or_selector_that_is_no_host_name_is_permerror
+    { "d=#{DOMAIN};" => "d=x, bank.example.attacker.example;", "s=test;" => "s=te\\st;" }.each do |tag, forged|
+      signature = verify(signed.sub(tag, forged)).signatures.first
+
+      assert_equal MailAuth::Status::PERMERROR, signature.status
+      assert_equal "invalid #{forged[0]}= tag", signature.comment
+    end
+  end
+
+  def test_an_identity_outside_the_signing_domain_is_permerror
+    assert_equal MailAuth::Status::PASS, verify(signed(tags: { "i" => "joe@mail.#{DOMAIN}" })).status
+
+    [ "joe@elsewhere.example", "joe@not#{DOMAIN}", "joe" ].each do |identity|
+      signature = verify(signed(tags: { "i" => identity })).signatures.first
+
+      assert_equal "i= is not within d=", signature.comment
+    end
   end
 
   def test_unsupported_algorithm_is_permerror
@@ -240,6 +319,20 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal "3 more signatures not evaluated", result.signatures.last.comment
   end
 
+  class CountingMessage < MailAuth::Message
+    attr_reader :names_read, :bodies_read
+
+    def field_name(field)
+      @names_read = names_read.to_i + 1
+      super
+    end
+
+    def body
+      @bodies_read = bodies_read.to_i + 1
+      super
+    end
+  end
+
   private
     def verify(raw, resolver: resolver_for(zone_from_fixture), now: SIGNED_AT + 3600)
       MailAuth::Dkim.verify(MailAuth::Message.new(raw), resolver:, now:)
@@ -251,6 +344,22 @@ class MailAuth::DkimTest < MailAuth::TestCase
       JSON.parse(fixture("dns.json")).transform_values do |types|
         types.to_h { |type, records| [ type.downcase.to_sym, records.map(&:join) ] }
       end
+    end
+
+    # What a command printed before it exited or went quiet for `timeout`.
+    def under_a_terminal(*command, timeout: 10)
+      read = +""
+
+      PTY.spawn(*command) do |output, _input, pid|
+        read << output.readpartial(4096) while IO.select([ output ], nil, nil, timeout)
+      rescue Errno::EIO
+        # The terminal closes when the command exits.
+      ensure
+        Process.kill("KILL", pid) rescue nil
+        Process.wait(pid)
+      end
+
+      read
     end
 
     def zone_publishing(record)

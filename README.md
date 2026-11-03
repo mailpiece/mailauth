@@ -159,6 +159,8 @@ end
 - `permerror` - the record or signature is broken; retrying changes nothing
 - `none` - the domain published no policy, or the message carried no signature
 
+A DMARC `permerror` is not a pass: it is a From with no single domain to check, two fields, two addresses, or one that doesn't parse. Treat it as you would a `fail` under the strictest policy you apply.
+
 ## Resolver
 
 DNS resolution is [mailresolver](https://github.com/mailpiece/mailresolver), a separate gem, injected as `resolver:` everywhere a lookup happens:
@@ -232,7 +234,7 @@ Authenticate first: sealing resolves nothing and re-checks nothing. Both what th
 - **oversign** - defaults to none: an oversigned name is one no later hop may add, and a sealed message is one still travelling
 - **now** - the sealing instant for `t=`
 
-The instance number is one above the highest already on the message. A chain someone has sealed `cv=fail` is finished (RFC 8617 §5.1.3): `result.arc` says so, and whether to seal one anyway is yours to decide.
+The instance number is one above the highest already on the message, and a message already at 50 comes back unsealed, since a 51st set is one every validator fails. A chain someone has sealed `cv=fail` is finished (RFC 8617 §5.1.3): `result.arc` says so, and whether to seal one anyway is yours to decide.
 
 `MailAuth::Arc::Sealer` returns the fields one at a time — `#seal_field`, `#message_signature_field`, `#authentication_results_field` — for callers assembling messages themselves.
 

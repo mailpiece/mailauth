@@ -144,9 +144,10 @@ module MailAuth
       end
 
       # Everything here can come from a remote party — a surviving CR or LF
-      # would let them forge headers of their own.
+      # would start a header line of its own. Read as UTF-8 with invalid
+      # bytes replaced, so message bytes and UTF-8 join without raising.
       def sanitize(value)
-        value.to_s.gsub(/[\x00-\x1f\x7f]+/, " ").squeeze(" ").strip
+        value.to_s.dup.force_encoding(Encoding::UTF_8).scrub.gsub(/[\x00-\x1f\x7f]+/, " ").squeeze(" ").strip
       end
 
       def terminated(tokens)

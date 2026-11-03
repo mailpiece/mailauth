@@ -4,6 +4,9 @@ module MailAuth
     # is held as the list of fields claiming this instance, so a set that
     # carries two of anything can say so rather than quietly keeping one.
     class Set
+      # RFC 8601 §2.2: method, an optional version, then the result.
+      METHOD_RESULT = %r{\A\s*(?<method>[a-z0-9-]+)\s*(?:/\s*\d+\s*)?=\s*(?<result>[a-z]+)(?:\s|\z)}i
+
       attr_reader :instance
 
       def initialize(instance)
@@ -62,13 +65,45 @@ module MailAuth
       end
 
       # Best effort, and never load-bearing: the chain's validity is a question
-      # about signatures, so an unreadable assertion must not fail it. A name
-      # carrying a dot is one of RFC 8601's properties (`smtp.mailfrom`), not a
-      # method, and says nothing about a verdict.
+      # about signatures, so an unreadable assertion must not fail it. Only the
+      # method opening each resinfo counts (RFC 8601 §2.2), since comments,
+      # quoted strings and property values carry whatever a sender wrote.
       def claimed
-        authentication_results_payload.scan(/(?<![\w.-])([a-z][a-z0-9-]*)[ \t]*=[ \t]*([a-z]+)/i).
-          each_with_object({}) { |(method, result), claims| claims[method.downcase] ||= result.downcase }
+        uncommented(authentication_results_payload).split(";").drop(1).
+          each_with_object({}) do |resinfo, claims|
+            if claim = resinfo.match(METHOD_RESULT)
+              claims[claim[:method].downcase] ||= claim[:result].downcase
+            end
+          end
       end
+
+      private
+        # Comments nest and both they and quoted strings take backslash escapes,
+        # so they are walked rather than matched. One left open runs to the end.
+        def uncommented(text)
+          depth, quoted, escaped = 0, false, false
+
+          text.each_char.with_object(+"") do |char, kept|
+            if escaped
+              escaped = false
+            elsif char == "\\" && (quoted || depth > 0)
+              escaped = true
+            elsif quoted
+              quoted = char != '"'
+            elsif depth > 0
+              depth += 1 if char == "("
+              depth -= 1 if char == ")"
+            elsif char == "("
+              depth = 1
+              kept << " "
+            elsif char == '"'
+              quoted = true
+              kept << " "
+            else
+              kept << char
+            end
+          end
+        end
     end
   end
 end

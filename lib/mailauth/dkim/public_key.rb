@@ -1,5 +1,7 @@
 require "openssl"
 
+require "mailauth/domain"
+
 module MailAuth
   module Dkim
     # The key a signing domain publishes, per RFC 6376 §3.6.1. ARC keys live in
@@ -10,8 +12,10 @@ module MailAuth
           read record_for(name_for(selector: selector, domain: domain), resolver), algorithm
         end
 
+        # A U-label is asked for as its A-label (RFC 8616 §4): dnsruby sends
+        # BINARY bytes as they are.
         def name_for(selector:, domain:)
-          "#{selector}._domainkey.#{domain}"
+          "#{Domain.normalize(selector)}._domainkey.#{Domain.normalize(domain)}"
         end
 
         private
@@ -30,7 +34,9 @@ module MailAuth
           end
 
           def read(material, algorithm)
-            key = OpenSSL::PKey.read(wrapped(material))
+            # An empty passphrase, so an encrypted key fails rather than
+            # OpenSSL asking the terminal for one.
+            key = OpenSSL::PKey.read(wrapped(material), "")
 
             if KEY_TYPES[key.oid] != algorithm
               raise Malformed, "key is not #{algorithm}"

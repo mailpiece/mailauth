@@ -30,9 +30,16 @@ module MailAuth
     # RFC 6376 §3.2: ALPHA *ALNUMPUNC.
     TAG_NAME = /\A[a-zA-Z][a-zA-Z0-9_]*\z/n
 
+    # Letters, digits, hyphens and underscores, 63 to a label and 253 in all.
+    # Anything else in d= or s= names no key a domain can publish.
+    HOST_NAME = /\A(?=.{1,253}\z)[a-z0-9_-]{1,63}(?:\.[a-z0-9_-]{1,63})*\z/i
+
     # RFC 6376 §8.4. Each signature costs a lookup for a key its sender named,
     # and headers are cheap to write, so only the first so many are answered.
     MAXIMUM_SIGNATURES = 10
+
+    # Seconds a signer's clock may run ahead of ours, OpenDKIM's default.
+    CLOCK_DRIFT = 300
 
     # Shorter RSA keys are factorable cheaply enough to prove nothing.
     MINIMUM_RSA_BITS = 1024
@@ -62,6 +69,10 @@ module MailAuth
 
     def self.sign(raw, domain:, selector:, key:, headers: nil, oversign: Signer::OVERSIGNED_HEADERS, expires_in: nil, now: Time.now)
       Signer.new(raw, domain:, selector:, key:, headers:, oversign:, expires_in:, now:).signed_message
+    end
+
+    def self.host_name?(name)
+      Domain.normalize(name).match?(HOST_NAME)
     end
 
     # RFC 6376 §3.2: a malformed, repeated, or empty tag invalidates the whole
@@ -135,6 +146,17 @@ module MailAuth
           raise Malformed, "From is not signed" unless signed_header_names.include?("from")
 
           raise Malformed, "invalid l= tag" if @tags["l"] && !@tags["l"].match?(/\A\d+\z/n)
+          raise Malformed, "invalid d= tag" unless Dkim.host_name?(@tags["d"])
+          raise Malformed, "invalid s= tag" unless Dkim.host_name?(@tags["s"])
+
+          # §3.5: the identity is the signing domain or a subdomain of it.
+          raise Malformed, "i= is not within d=" if @tags["i"] && !within_signing_domain?(@tags["i"])
+        end
+
+        def within_signing_domain?(identity)
+          domain = Domain.normalize(identity.rpartition("@").last) if identity.include?("@")
+
+          domain == signing_domain || domain.to_s.end_with?(".#{signing_domain}")
         end
 
         def expired?
@@ -146,7 +168,7 @@ module MailAuth
         end
 
         def postdated?
-          signed_at && signed_at > @now
+          signed_at && signed_at > @now + CLOCK_DRIFT
         end
 
         def signed_at
@@ -159,8 +181,12 @@ module MailAuth
 
         # l= counts canonicalized bytes, not the bytes that arrived — the tag
         # signs a prefix of the canonical body, not of the message on the wire.
+        # A limit past the body signs bytes that aren't there (OpenDKIM's
+        # TOOLARGE_L), and one past a long can't be sliced at all.
         def signed_body
           if body_limit
+            raise Malformed, "l= exceeds the body length" if body_limit > canonical_body.bytesize
+
             canonical_body.byteslice(0, body_limit)
           else
             canonical_body
@@ -172,7 +198,7 @@ module MailAuth
         end
 
         def canonical_body
-          @canonical_body ||= Canonicalization.body(@message.body, body_canonicalization)
+          @message.canonical_body(body_canonicalization)
         end
 
         def verified?
@@ -189,23 +215,20 @@ module MailAuth
           PublicKey.name_for(selector: @tags["s"], domain: @tags["d"])
         end
 
+        def signing_domain
+          Domain.normalize(@tags["d"]) if @tags["d"]
+        end
+
         # No trailing CRLF after the signature field: the bytes after b= are
         # what the signature covers.
         def canonical_headers
           signed_fields.map { |field| canonicalize_field(field) + CRLF }.join + canonical_signature_field
         end
 
-        # Takes the last unused instance of each named header, walking upward
-        # through duplicates. Naming a header that isn't present (oversigning)
-        # contributes nothing but forbids one being added later.
+        # Naming a header that isn't present (oversigning) contributes nothing
+        # but forbids one being added later.
         def signed_fields
-          remaining = @message.fields.dup
-
-          signed_header_names.filter_map do |name|
-            if index = remaining.rindex { |field| @message.field_name(field) == name }
-              remaining.delete_at(index)
-            end
-          end
+          @message.fields_signed_by(signed_header_names)
         end
 
         def signed_header_names
@@ -255,14 +278,14 @@ module MailAuth
         end
 
         def signature(status, comment: nil)
-          Signature.new(status:, domain: @tags["d"]&.downcase, selector: @tags["s"], algorithm: @tags["a"],
+          Signature.new(status:, domain: signing_domain, selector: @tags["s"], algorithm: @tags["a"],
             canonicalization: canonicalization, comment:, aligned: aligned?, under_sized: under_sized)
         end
 
         # Relaxed DMARC alignment: the From: domain and the signing domain need
         # only share an organizational domain, not match exactly.
         def aligned?
-          from, signing_domain = @message.header_from_domain, @tags["d"]&.downcase
+          from = @message.header_from_domain
 
           if from && signing_domain
             Dmarc::Alignment.aligned?(from, signing_domain, strict: false)

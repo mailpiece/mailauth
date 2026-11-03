@@ -107,8 +107,19 @@ module MailAuth
             else
               parts = value.split(/[#{Regexp.escape(delimiters.empty? ? "." : delimiters)}]/)
               parts = parts.reverse if reverse
-              parts = parts.last(digits.to_i) if digits.to_i > 0
-              parts.join(".")
+              parts.last(kept(digits, parts.length)).join(".")
+            end
+          end
+
+          # §7.3: zero labels is an error, and more than there are keeps them
+          # all, so a bignum never reaches the slice.
+          def kept(digits, count)
+            if digits.empty?
+              count
+            elsif digits.to_i.zero?
+              raise PermError, "macro keeps zero labels"
+            else
+              [ digits.to_i, count ].min
             end
           end
 

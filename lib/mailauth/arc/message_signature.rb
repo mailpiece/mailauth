@@ -60,6 +60,8 @@ module MailAuth
 
           raise Dkim::Malformed, "invalid t= tag" if @tags["t"] && !@tags["t"].match?(/\A\d+\z/n)
           raise Dkim::Malformed, "invalid l= tag" if @tags["l"] && !@tags["l"].match?(/\A\d+\z/n)
+          raise Dkim::Malformed, "invalid d= tag" unless Dkim.host_name?(@tags["d"])
+          raise Dkim::Malformed, "invalid s= tag" unless Dkim.host_name?(@tags["s"])
         end
 
         # h= may name nothing at all, but the tags carrying an identity or the
@@ -73,7 +75,13 @@ module MailAuth
         end
 
         def signed_body
-          body_limit ? canonical_body.byteslice(0, body_limit) : canonical_body
+          if body_limit
+            raise Dkim::Malformed, "l= exceeds the body length" if body_limit > canonical_body.bytesize
+
+            canonical_body.byteslice(0, body_limit)
+          else
+            canonical_body
+          end
         end
 
         def body_limit
@@ -81,7 +89,7 @@ module MailAuth
         end
 
         def canonical_body
-          @canonical_body ||= Dkim::Canonicalization.body(@message.body, body_canonicalization)
+          @message.canonical_body(body_canonicalization)
         end
 
         def verified?
@@ -105,16 +113,8 @@ module MailAuth
             canonicalize(@field).sub(/([;:\s]+b=)[^;]*/n, '\1')
         end
 
-        # The last unused instance of each name, walking upward through
-        # duplicates (RFC 6376 §5.4.2).
         def signed_fields
-          remaining = @message.fields.dup
-
-          signed_names.filter_map do |name|
-            if index = remaining.rindex { |field| @message.field_name(field) == name }
-              remaining.delete_at(index)
-            end
-          end
+          @message.fields_signed_by(signed_names)
         end
 
         def signed_names

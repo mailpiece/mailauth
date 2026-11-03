@@ -20,7 +20,7 @@ module MailAuth
 
       private
         def sole_domain(header_from)
-          domains = Array(header_from).map { |domain| domain.to_s.strip.downcase.chomp(".") }.reject(&:empty?)
+          domains = Array(header_from).map { |domain| Domain.normalize(domain) }.reject(&:empty?)
 
           domains.first if domains.one?
         end

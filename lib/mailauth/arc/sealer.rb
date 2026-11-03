@@ -24,9 +24,19 @@ module MailAuth
         fields + @message.raw
       end
 
-      # Seal first, so prepending the three leaves the newest set on top.
+      # Seal first, so prepending the three leaves the newest set on top. None
+      # on a full chain: a set past MAXIMUM_SETS is one every validator fails
+      # (§4.2.1), and the message is one anyone could have filled.
       def fields
-        seal_field + message_signature_field + authentication_results_field
+        if full?
+          ""
+        else
+          seal_field + message_signature_field + authentication_results_field
+        end
+      end
+
+      def full?
+        instance > MAXIMUM_SETS
       end
 
       # §4.1.3, and signed last of the three: it covers the two below it, which
@@ -54,10 +64,6 @@ module MailAuth
           # §4.1.2: an AMS naming an ARC header would leave the seal signing a
           # signature that signs it back.
           raise ArgumentError, "h= must not cover ARC header fields" if arc_named?
-
-          # A 51st set is one every validator has to fail (§4.2.1), so it never
-          # gets written in the first place.
-          raise ArgumentError, "chain already carries #{MAXIMUM_SETS} sets" if instance > MAXIMUM_SETS
         end
 
         def arc_named?

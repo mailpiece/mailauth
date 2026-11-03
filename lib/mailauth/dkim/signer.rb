@@ -116,7 +116,7 @@ module MailAuth
         end
 
         def body_hash
-          [ OpenSSL::Digest::SHA256.digest(Canonicalization.body(@message.body, "relaxed")) ].pack("m0")
+          [ OpenSSL::Digest::SHA256.digest(@message.canonical_body("relaxed")) ].pack("m0")
         end
 
         def signed_names
@@ -140,13 +140,7 @@ module MailAuth
 
         # Duplicates are taken bottom-up, the order a verifier takes them (§5.4.2).
         def signed_fields
-          remaining = @message.fields.dup
-
-          signed_names.filter_map do |name|
-            if index = remaining.rindex { |field| @message.field_name(field) == name }
-              remaining.delete_at(index)
-            end
-          end
+          @message.fields_signed_by(signed_names)
         end
 
         def sign(data)

@@ -17,6 +17,18 @@ class MailAuth::MessageTest < MailAuth::TestCase
     assert_equal "example.com", MailAuth::Message.new(RAW).header_from_domain
   end
 
+  def test_reads_an_internationalized_from_domain_as_its_a_label
+    message = MailAuth::Message.new("From: CEO <ceo@bücher.example>\r\n\r\nBody.\r\n".b)
+
+    assert_equal "xn--bcher-kva.example", message.header_from_domain
+  end
+
+  def test_a_comment_inside_an_address_leaves_nothing_behind
+    message = MailAuth::Message.new("From: ceo@(comment)bank.example\r\n\r\nBody.\r\n")
+
+    assert_equal "bank.example", message.header_from_domain
+  end
+
   def test_keeps_bytes_binary
     assert_equal Encoding::ASCII_8BIT, MailAuth::Message.new(RAW).raw.encoding
   end
