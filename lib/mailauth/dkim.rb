@@ -159,8 +159,12 @@ module MailAuth
 
         # l= counts canonicalized bytes, not the bytes that arrived — the tag
         # signs a prefix of the canonical body, not of the message on the wire.
+        # A limit past the body signs bytes that aren't there (OpenDKIM's
+        # TOOLARGE_L), and one past a long can't be sliced at all.
         def signed_body
           if body_limit
+            raise Malformed, "l= exceeds the body length" if body_limit > canonical_body.bytesize
+
             canonical_body.byteslice(0, body_limit)
           else
             canonical_body

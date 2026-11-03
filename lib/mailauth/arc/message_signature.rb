@@ -73,7 +73,13 @@ module MailAuth
         end
 
         def signed_body
-          body_limit ? canonical_body.byteslice(0, body_limit) : canonical_body
+          if body_limit
+            raise Dkim::Malformed, "l= exceeds the body length" if body_limit > canonical_body.bytesize
+
+            canonical_body.byteslice(0, body_limit)
+          else
+            canonical_body
+          end
         end
 
         def body_limit

@@ -184,6 +184,15 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal appended.bytesize, signature.under_sized
   end
 
+  def test_body_length_tag_past_the_body_is_permerror
+    [ BODY.bytesize + 1, 10**23 ].each do |limit|
+      signature = verify(signed(tags: { "l" => limit })).signatures.first
+
+      assert_equal MailAuth::Status::PERMERROR, signature.status
+      assert_equal "l= exceeds the body length", signature.comment
+    end
+  end
+
   # h= is walked bottom-up, so a name listed once covers the *lowest* instance
   # of that header and a name listed twice walks up to the one above it.
   def test_duplicate_header_names_are_taken_from_the_bottom_up
