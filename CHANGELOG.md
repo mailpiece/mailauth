@@ -7,6 +7,7 @@
 - DKIM, ARC: an `l=` past the end of the body is a permerror instead of raising
 - SPF: a macro keeping zero labels is a permerror, and one keeping more than there are keeps them all
 - ARC: `claimed` reads only the method opening each result, never comments, quoted strings or properties
+- DMARC, DKIM: an internationalized From domain or `d=` is looked up and reported by its A-label
 
 ## 0.6.0
 

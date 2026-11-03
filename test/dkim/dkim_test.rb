@@ -184,6 +184,11 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal appended.bytesize, signature.under_sized
   end
 
+  def test_an_internationalized_signing_domain_is_looked_up_by_its_a_label
+    assert_equal "sel._domainkey.xn--bcher-kva.example",
+      MailAuth::Dkim::PublicKey.name_for(selector: "sel", domain: "bücher.example".b)
+  end
+
   def test_body_length_tag_past_the_body_is_permerror
     [ BODY.bytesize + 1, 10**23 ].each do |limit|
       signature = verify(signed(tags: { "l" => limit })).signatures.first

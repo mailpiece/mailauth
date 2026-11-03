@@ -37,6 +37,13 @@ class MailAuth::DmarcTest < MailAuth::TestCase
     assert_equal MailAuth::Status::NONE, result.status
   end
 
+  def test_an_internationalized_domain_is_looked_up_by_its_a_label
+    result = check("bücher.example".b, record("p=reject", at: "xn--bcher-kva.example"))
+
+    assert_equal MailAuth::Status::FAIL, result.status
+    assert_equal "reject", result.policy
+  end
+
   def test_two_dmarc_records_are_none
     result = check("example.com", zone("_dmarc.example.com" => [ "v=DMARC1; p=reject", "v=DMARC1; p=none" ]))
 

@@ -1,3 +1,5 @@
+require "mailauth/domain"
+
 module MailAuth
   # A received message, split once into the parts every check needs. Binary
   # throughout: DKIM hashes bytes, so transcoding changes the answer.
@@ -40,7 +42,7 @@ module MailAuth
       addresses = from_addresses
 
       if addresses.one?
-        addresses.first.downcase.chomp(".")
+        Domain.normalize(addresses.first)
       end
     end
 

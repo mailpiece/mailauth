@@ -193,6 +193,10 @@ module MailAuth
           PublicKey.name_for(selector: @tags["s"], domain: @tags["d"])
         end
 
+        def signing_domain
+          Domain.normalize(@tags["d"]) if @tags["d"]
+        end
+
         # No trailing CRLF after the signature field: the bytes after b= are
         # what the signature covers.
         def canonical_headers
@@ -259,14 +263,14 @@ module MailAuth
         end
 
         def signature(status, comment: nil)
-          Signature.new(status:, domain: @tags["d"]&.downcase, selector: @tags["s"], algorithm: @tags["a"],
+          Signature.new(status:, domain: signing_domain, selector: @tags["s"], algorithm: @tags["a"],
             canonicalization: canonicalization, comment:, aligned: aligned?, under_sized: under_sized)
         end
 
         # Relaxed DMARC alignment: the From: domain and the signing domain need
         # only share an organizational domain, not match exactly.
         def aligned?
-          from, signing_domain = @message.header_from_domain, @tags["d"]&.downcase
+          from = @message.header_from_domain
 
           if from && signing_domain
             Dmarc::Alignment.aligned?(from, signing_domain, strict: false)
