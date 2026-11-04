@@ -2,9 +2,17 @@ version: 2
 updates:
   - package-ecosystem: bundler
     directory: "/"
+    groups:
+      bundler:
+        patterns:
+          - "*"
     schedule:
       interval: weekly
   - package-ecosystem: github-actions
     directory: "/"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     schedule:
       interval: weekly
