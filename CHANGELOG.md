@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- DMARC: a record with a missing or invalid `p=` but a valid `rua=` is read as `p=none`, and an invalid `sp=` as none for subdomains
 - SPF: `allows_any`, true when a record read during the check carries `+all` and so lets any host pass
 - `SpfResult#record`: the checked domain's own SPF record as published
 - DKIM, ARC: an `l=` past the end of the body is a permerror instead of raising

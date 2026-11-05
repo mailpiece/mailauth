@@ -10,6 +10,7 @@ module MailAuth
       TAGS = %w[ v p sp adkim aspf pct rua ruf fo rf ri ].freeze
       POLICIES = %w[ none quarantine reject ].freeze
       STRICT = "s".freeze
+      REPORTING_URI = /\A[a-z][a-z0-9+.-]*:[^\s!]+(?:![0-9]+[kmgt]?)?\z/i
       DEFAULT_PCT = 100
 
       class << self
@@ -59,7 +60,8 @@ module MailAuth
       end
 
       # `p` is the one required tag beyond the version; without it the record
-      # may as well not exist.
+      # may as well not exist, unless it asks for reports and so reads as p=none
+      # (RFC 7489 §6.6.3), as an invalid `sp` then does for subdomains.
       def usable?
         !requested_policy.nil?
       end
@@ -114,11 +116,15 @@ module MailAuth
         end
 
         def requested_policy
-          validated(tags["p"])
+          validated(tags["p"]) || ("none" if reporting?)
+        end
+
+        def reporting?
+          tags["rua"].to_s.split(",").any? { |uri| uri.strip.match?(REPORTING_URI) }
         end
 
         def subdomain_policy
-          validated(tags["sp"])
+          validated(tags["sp"]) || ("none" if tags["sp"] && reporting?)
         end
 
         def validated(policy)

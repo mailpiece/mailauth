@@ -26,7 +26,7 @@ class MailAuth::DmarcTest < MailAuth::TestCase
   end
 
   def test_a_record_without_a_policy_is_none
-    result = check("example.com", record("rua=mailto:dmarc@example.com"))
+    result = check("example.com", record("adkim=s"))
 
     assert_equal MailAuth::Status::NONE, result.status
   end
@@ -35,6 +35,34 @@ class MailAuth::DmarcTest < MailAuth::TestCase
     result = check("example.com", record("p=discard"))
 
     assert_equal MailAuth::Status::NONE, result.status
+  end
+
+  # RFC 7489 §6.6.3: a record that asks for reports is read as p=none.
+  def test_a_record_without_a_policy_but_with_rua_is_p_none
+    result = check("example.com", record("rua=mailto:dmarc@example.com"))
+
+    assert_equal MailAuth::Status::FAIL, result.status
+    assert_equal "none", result.policy
+  end
+
+  def test_a_record_with_an_unknown_policy_but_with_rua_is_p_none
+    result = check("example.com", record("p=discard; rua=mailto:dmarc@example.com!10m"))
+
+    assert_equal "none", result.policy
+  end
+
+  def test_a_subdomain_record_with_rua_but_no_policy_does_not_fall_back
+    result = check("mail.example.com", record("p=reject").merge(
+      record("rua=mailto:dmarc@example.com", at: "mail.example.com")))
+
+    assert_equal "none", result.policy
+  end
+
+  def test_an_invalid_rua_does_not_stand_in_for_a_policy
+    result = check("mail.example.com", record("p=reject").merge(
+      record("p=discard; rua=not a uri", at: "mail.example.com")))
+
+    assert_equal "reject", result.policy
   end
 
   def test_an_internationalized_domain_is_looked_up_by_its_a_label
@@ -129,6 +157,25 @@ class MailAuth::DmarcTest < MailAuth::TestCase
 
   def test_the_organizational_records_p_applies_to_a_subdomain_without_sp
     result = check("mail.example.com", record("p=reject"))
+
+    assert_equal "reject", result.policy
+  end
+
+  # RFC 7489 §6.6.3: an invalid sp with reports asked for is read as none.
+  def test_an_invalid_sp_with_rua_is_none_for_a_subdomain
+    result = check("mail.example.com", record("p=reject; sp=rejet; rua=mailto:dmarc@example.com"))
+
+    assert_equal "none", result.policy
+  end
+
+  def test_an_invalid_sp_with_rua_leaves_the_exact_domains_p
+    result = check("example.com", record("p=reject; sp=rejet; rua=mailto:dmarc@example.com"))
+
+    assert_equal "reject", result.policy
+  end
+
+  def test_an_invalid_sp_without_rua_leaves_a_subdomain_to_p
+    result = check("mail.example.com", record("p=reject; sp=rejet; rua=not a uri"))
 
     assert_equal "reject", result.policy
   end
