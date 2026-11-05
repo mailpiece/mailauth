@@ -38,9 +38,6 @@ module MailAuth
     # and headers are cheap to write, so only the first so many are answered.
     MAXIMUM_SIGNATURES = 10
 
-    # Seconds a signer's clock may run ahead of ours, OpenDKIM's default.
-    CLOCK_DRIFT = 300
-
     # Shorter RSA keys are factorable cheaply enough to prove nothing.
     MINIMUM_RSA_BITS = 1024
 
@@ -107,8 +104,6 @@ module MailAuth
 
         if expired?
           failed("signature expired")
-        elsif postdated?
-          failed("signature timestamp in the future")
         elsif body_hash_matches?
           verified? ? signature(Status::PASS) : failed("bad signature")
         else
@@ -165,14 +160,6 @@ module MailAuth
 
         def expires_at
           Time.at(@tags["x"].to_i) if @tags["x"]&.match?(/\A\d+\z/n)
-        end
-
-        def postdated?
-          signed_at && signed_at > @now + CLOCK_DRIFT
-        end
-
-        def signed_at
-          Time.at(@tags["t"].to_i) if @tags["t"]&.match?(/\A\d+\z/n)
         end
 
         def body_hash_matches?
