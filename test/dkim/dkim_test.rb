@@ -108,25 +108,41 @@ class MailAuth::DkimTest < MailAuth::TestCase
     assert_equal "key revoked", result.signatures.first.comment
   end
 
-  def test_expired_signature_fails
+  def test_an_expired_signature_is_neutral
     message = signed(tags: { "t" => SIGNED_AT.to_i, "x" => SIGNED_AT.to_i + 60 })
 
     assert_equal MailAuth::Status::PASS, verify(message, now: SIGNED_AT + 30).status
-    assert_equal MailAuth::Status::FAIL, verify(message, now: SIGNED_AT + 120).status
-    assert_equal "signature expired", verify(message, now: SIGNED_AT + 120).signatures.first.comment
+    assert_equal MailAuth::Status::NEUTRAL, verify(message, now: SIGNED_AT + 120).status
+    assert_equal "expired", verify(message, now: SIGNED_AT + 120).signatures.first.comment
   end
 
-  def test_signature_from_the_future_fails
-    message = signed(tags: { "t" => (SIGNED_AT + 7200).to_i })
+  def test_a_signature_that_expires_before_it_was_made_is_neutral
+    result = verify(signed(tags: { "t" => (SIGNED_AT + 7200).to_i, "x" => (SIGNED_AT + 5400).to_i }))
 
-    assert_equal "signature timestamp in the future", verify(message).signatures.first.comment
+    assert_equal MailAuth::Status::NEUTRAL, result.status
+    assert_equal "invalid expiration", result.signatures.first.comment
   end
 
-  def test_a_signer_clock_a_few_minutes_ahead_is_allowed
-    now = SIGNED_AT + 3600
+  def test_a_misdated_signature_past_its_expiry_is_expired
+    result = verify(signed(tags: { "t" => SIGNED_AT.to_i, "x" => SIGNED_AT.to_i - 60 }))
 
-    assert_equal MailAuth::Status::PASS, verify(signed(tags: { "t" => (now + 200).to_i }), now:).status
-    assert_equal MailAuth::Status::FAIL, verify(signed(tags: { "t" => (now + 400).to_i }), now:).status
+    assert_equal MailAuth::Status::NEUTRAL, result.status
+    assert_equal "expired", result.signatures.first.comment
+  end
+
+  def test_a_bad_signature_keeps_its_failure_past_its_expiry
+    message = signed(tags: { "t" => SIGNED_AT.to_i, "x" => SIGNED_AT.to_i - 60 })
+    result = verify(message.sub("Subject: Is dinner ready?", "Subject: Is dinner served?"))
+
+    assert_equal MailAuth::Status::FAIL, result.status
+    assert_equal "bad signature", result.signatures.first.comment
+  end
+
+  # RFC 6376 §3.5 lets a verifier ignore a t= in the future.
+  def test_a_signature_from_the_future_is_evaluated_normally
+    assert_equal MailAuth::Status::PASS, verify(signed(tags: { "t" => (SIGNED_AT + 7200).to_i })).status
+    assert_equal MailAuth::Status::PASS,
+      verify(signed(tags: { "t" => (SIGNED_AT + 7200).to_i, "x" => (SIGNED_AT + 9000).to_i })).status
   end
 
   def test_every_canonicalization_combination_verifies

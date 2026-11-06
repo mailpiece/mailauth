@@ -15,7 +15,8 @@
 - DKIM: an encrypted key in a key record is unreadable instead of prompting the terminal for a passphrase
 - DKIM, ARC: the body is canonicalized once per form instead of once per signature
 - DKIM, ARC: a `d=` or `s=` that is not a host name, or a DKIM `i=` outside `d=`, is a permerror
-- DKIM: a `t=` up to five minutes in the future is allowed for clock drift
+- DKIM: a `t=` in the future no longer fails the signature
+- DKIM: a verified signature past its `x=` is neutral (`expired`) instead of failing, and one whose `x=` is before its `t=` is neutral (`invalid expiration`)
 - ARC: sealing a message already at 50 sets returns it unsealed instead of raising
 - DMARC: two records at a subdomain end discovery instead of falling back to the organizational domain
 

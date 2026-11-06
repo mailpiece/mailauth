@@ -38,9 +38,6 @@ module MailAuth
     # and headers are cheap to write, so only the first so many are answered.
     MAXIMUM_SIGNATURES = 10
 
-    # Seconds a signer's clock may run ahead of ours, OpenDKIM's default.
-    CLOCK_DRIFT = 300
-
     # Shorter RSA keys are factorable cheaply enough to prove nothing.
     MINIMUM_RSA_BITS = 1024
 
@@ -105,12 +102,8 @@ module MailAuth
       def result
         validate
 
-        if expired?
-          failed("signature expired")
-        elsif postdated?
-          failed("signature timestamp in the future")
-        elsif body_hash_matches?
-          verified? ? signature(Status::PASS) : failed("bad signature")
+        if body_hash_matches?
+          verified? ? verified_signature : failed("bad signature")
         else
           # Some verifiers call this neutral. We call it failure: the signer
           # said what the body would hash to, and it hashes to something else.
@@ -159,16 +152,28 @@ module MailAuth
           domain == signing_domain || domain.to_s.end_with?(".#{signing_domain}")
         end
 
+        # RFC 6376 §3.5. A signature past its x=, or one that expires before
+        # it was made, still proves what it signed but no longer vouches for it.
+        def verified_signature
+          if expired?
+            signature(Status::NEUTRAL, comment: "expired")
+          elsif expires_before_signed?
+            signature(Status::NEUTRAL, comment: "invalid expiration")
+          else
+            signature(Status::PASS)
+          end
+        end
+
         def expired?
           expires_at && expires_at < @now
         end
 
-        def expires_at
-          Time.at(@tags["x"].to_i) if @tags["x"]&.match?(/\A\d+\z/n)
+        def expires_before_signed?
+          expires_at && signed_at && expires_at < signed_at
         end
 
-        def postdated?
-          signed_at && signed_at > @now + CLOCK_DRIFT
+        def expires_at
+          Time.at(@tags["x"].to_i) if @tags["x"]&.match?(/\A\d+\z/n)
         end
 
         def signed_at

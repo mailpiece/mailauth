@@ -109,7 +109,7 @@ class MailAuth::DkimSigningTest < MailAuth::TestCase
 
     assert_includes signed, "x=#{SIGNED_AT.to_i + 3600};"
     assert_equal MailAuth::Status::PASS, verify(signed, now: SIGNED_AT + 60).status
-    assert_equal MailAuth::Status::FAIL, verify(signed, now: SIGNED_AT + 7200).status
+    assert_equal MailAuth::Status::NEUTRAL, verify(signed, now: SIGNED_AT + 7200).status
   end
 
   def test_no_expiration_by_default
