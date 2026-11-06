@@ -10,23 +10,16 @@ module MailAuth
       TAGS = %w[ v p sp adkim aspf pct rua ruf fo rf ri ].freeze
       POLICIES = %w[ none quarantine reject ].freeze
       STRICT = "s".freeze
-      REPORTING_URI = /\A[a-z][a-z0-9+.-]*:[^\s!]+(?:![0-9]+[kmgt]?)?\z/i
       DEFAULT_PCT = 100
 
       class << self
         # DNS failures are raised rather than swallowed: "we couldn't ask" is
         # a different answer from "there is nothing there".
         #
-        # Two policies are as good as none: RFC 7489 §6.6.3 would rather apply
-        # nothing than guess which one the domain meant, and asks no parent.
+        # Only a sole record answers, whatever it says: none or several send
+        # us to the organizational domain, and the same there is no DMARC.
         def find(domain, resolver:)
-          texts = texts_at(domain, resolver)
-
-          if texts.length > 1
-            nil
-          else
-            usable(texts, organizational: false) || at_organizational_domain(domain, resolver: resolver)
-          end
+          sole(texts_at(domain, resolver), organizational: false) || at_organizational_domain(domain, resolver: resolver)
         end
 
         private
@@ -36,19 +29,17 @@ module MailAuth
             []
           end
 
-          def usable(texts, organizational:)
-            if texts.one? && (record = new(texts.first, organizational: organizational)).usable?
-              record
-            end
+          def sole(texts, organizational:)
+            new(texts.first, organizational: organizational) if texts.one?
           end
 
-          # A subdomain with no record of its own — or one too broken to apply —
-          # falls back to its parent, which is how a single record at the
-          # organizational domain covers a whole tree of hostnames.
+          # A subdomain without a sole record of its own falls back to its
+          # parent, which is how a single record at the organizational domain
+          # covers a whole tree of hostnames.
           def at_organizational_domain(domain, resolver:)
             organizational = OrganizationalDomain.of(domain)
 
-            usable(texts_at(organizational, resolver), organizational: true) unless organizational == domain
+            sole(texts_at(organizational, resolver), organizational: true) unless organizational == domain
           end
       end
 
@@ -59,23 +50,14 @@ module MailAuth
         @tags = parse(text)
       end
 
-      # `p` is the one required tag beyond the version; without it the record
-      # may as well not exist, unless it asks for reports and so reads as p=none
-      # (RFC 7489 §6.6.3), as an invalid `sp` then does for subdomains.
-      def usable?
-        !requested_policy.nil?
-      end
-
       # RFC 7489 §6.6.3: mail from a subdomain answers to the parent's `sp`,
       # deliberately not the parent's own `p` — an organization can reject
       # forgeries of unused hostnames while still easing its own mail through
-      # under p=none.
+      # under p=none. A missing or misspelled policy is never enforced.
       def policy
-        if organizational? && subdomain_policy
-          subdomain_policy
-        else
-          requested_policy
-        end
+        requested = organizational? && !tags["sp"].to_s.empty? ? tags["sp"] : tags["p"]
+
+        requested.to_s.downcase.then { |value| POLICIES.include?(value) ? value : "none" }
       end
 
       # Surfaced, never applied: rolling the `pct` dice here would make the
@@ -113,22 +95,6 @@ module MailAuth
 
             [ name, value.strip ] if value && TAGS.include?(name)
           }.to_h
-        end
-
-        def requested_policy
-          validated(tags["p"]) || ("none" if reporting?)
-        end
-
-        def reporting?
-          tags["rua"].to_s.split(",").any? { |uri| uri.strip.match?(REPORTING_URI) }
-        end
-
-        def subdomain_policy
-          validated(tags["sp"]) || ("none" if tags["sp"] && reporting?)
-        end
-
-        def validated(policy)
-          policy&.downcase&.then { |value| value if POLICIES.include?(value) }
         end
     end
   end

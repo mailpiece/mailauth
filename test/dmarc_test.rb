@@ -25,19 +25,22 @@ class MailAuth::DmarcTest < MailAuth::TestCase
     assert_equal MailAuth::Status::NONE, result.status
   end
 
-  def test_a_record_without_a_policy_is_none
+  # A record is still checked without a policy it can enforce; it just
+  # enforces none.
+  def test_a_record_without_a_policy_is_p_none
     result = check("example.com", record("adkim=s"))
 
-    assert_equal MailAuth::Status::NONE, result.status
+    assert_equal MailAuth::Status::FAIL, result.status
+    assert_equal "none", result.policy
   end
 
-  def test_a_record_with_an_unknown_policy_is_none
+  def test_a_record_with_an_unknown_policy_is_p_none
     result = check("example.com", record("p=discard"))
 
-    assert_equal MailAuth::Status::NONE, result.status
+    assert_equal MailAuth::Status::FAIL, result.status
+    assert_equal "none", result.policy
   end
 
-  # RFC 7489 §6.6.3: a record that asks for reports is read as p=none.
   def test_a_record_without_a_policy_but_with_rua_is_p_none
     result = check("example.com", record("rua=mailto:dmarc@example.com"))
 
@@ -58,11 +61,12 @@ class MailAuth::DmarcTest < MailAuth::TestCase
     assert_equal "none", result.policy
   end
 
-  def test_an_invalid_rua_does_not_stand_in_for_a_policy
-    result = check("mail.example.com", record("p=reject").merge(
-      record("p=discard; rua=not a uri", at: "mail.example.com")))
+  def test_a_subdomain_record_with_an_unknown_policy_does_not_fall_back
+    resolver = resolver_for(record("p=reject").merge(record("p=rejet", at: "mail.example.com")))
+    result = MailAuth::Dmarc.check(header_from: "mail.example.com", spf: nil, dkim: nil, resolver: resolver)
 
-    assert_equal "reject", result.policy
+    assert_equal "none", result.policy
+    assert_equal [ [ "_dmarc.mail.example.com", :txt ] ], resolver.queries
   end
 
   def test_an_internationalized_domain_is_looked_up_by_its_a_label
@@ -72,12 +76,12 @@ class MailAuth::DmarcTest < MailAuth::TestCase
     assert_equal "reject", result.policy
   end
 
-  def test_two_dmarc_records_at_a_subdomain_do_not_fall_back_to_the_organizational_domain
-    result = check("mail.example.com", record("p=reject").merge(
+  def test_two_dmarc_records_at_a_subdomain_fall_back_to_the_organizational_domain
+    result = check("mail.example.com", record("p=quarantine").merge(
       zone("_dmarc.mail.example.com" => [ "v=DMARC1; p=reject", "v=DMARC1; p=none" ])))
 
-    assert_equal MailAuth::Status::NONE, result.status
-    assert_nil result.policy
+    assert_equal MailAuth::Status::FAIL, result.status
+    assert_equal "quarantine", result.policy
   end
 
   def test_two_dmarc_records_are_none
@@ -161,21 +165,22 @@ class MailAuth::DmarcTest < MailAuth::TestCase
     assert_equal "reject", result.policy
   end
 
-  # RFC 7489 §6.6.3: an invalid sp with reports asked for is read as none.
+  # A misspelled sp is not read as a blank one: it does not hand subdomains
+  # back to p.
+  def test_an_invalid_sp_is_none_for_a_subdomain
+    result = check("mail.example.com", record("p=reject; sp=rejet"))
+
+    assert_equal "none", result.policy
+  end
+
   def test_an_invalid_sp_with_rua_is_none_for_a_subdomain
     result = check("mail.example.com", record("p=reject; sp=rejet; rua=mailto:dmarc@example.com"))
 
     assert_equal "none", result.policy
   end
 
-  def test_an_invalid_sp_with_rua_leaves_the_exact_domains_p
-    result = check("example.com", record("p=reject; sp=rejet; rua=mailto:dmarc@example.com"))
-
-    assert_equal "reject", result.policy
-  end
-
-  def test_an_invalid_sp_without_rua_leaves_a_subdomain_to_p
-    result = check("mail.example.com", record("p=reject; sp=rejet; rua=not a uri"))
+  def test_an_invalid_sp_leaves_the_exact_domains_p
+    result = check("example.com", record("p=reject; sp=rejet"))
 
     assert_equal "reject", result.policy
   end

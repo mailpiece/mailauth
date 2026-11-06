@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- DMARC: a record with a missing or invalid `p=` but a valid `rua=` is read as `p=none`, and an invalid `sp=` as none for subdomains
+- DMARC: a domain's sole record is final whatever it says, and none or several fall back to the organizational domain; a missing or invalid `p=` or `sp=` reads as none
 - SPF: `allows_any`, true when a record read during the check carries `+all` and so lets any host pass
 - `SpfResult#record`: the checked domain's own SPF record as published
 - DKIM, ARC: an `l=` past the end of the body is a permerror instead of raising
@@ -17,7 +17,6 @@
 - DKIM, ARC: a `d=` or `s=` that is not a host name, or a DKIM `i=` outside `d=`, is a permerror
 - DKIM: a `t=` up to five minutes in the future is allowed for clock drift
 - ARC: sealing a message already at 50 sets returns it unsealed instead of raising
-- DMARC: two records at a subdomain end discovery instead of falling back to the organizational domain
 
 ## 0.6.0
 
