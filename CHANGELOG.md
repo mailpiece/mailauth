@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- iprev is checked after SPF, DKIM, DMARC and ARC, so a reverse zone that never answers can't use up their time
 - DMARC: a domain's sole record is final whatever it says, and none or several fall back to the organizational domain; a missing or invalid `p=` or `sp=` reads as none
 - SPF: `allows_any`, true when a record read during the check carries `+all` and so lets any host pass
 - `SpfResult#record`: the checked domain's own SPF record as published

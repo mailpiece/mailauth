@@ -39,6 +39,19 @@ class MailAuth::AuthenticateTest < MailAuth::TestCase
     assert_includes clauses_of(result.authentication_results), "iprev=pass (mx.football.example.com) policy.iprev=#{PERMITTED_IP}"
   end
 
+  # A reverse zone that never answers decides nothing, so it is asked only once the rest are answered.
+  def test_the_connecting_address_is_resolved_in_reverse_last
+    resolver = resolver_for(authenticated_zone.merge(PERMITTED_IP => { ptr: :timeout }))
+    result = MailAuth.authenticate(fixture("signed.eml"), ip: PERMITTED_IP, helo: MTA, mail_from: SENDER, mta: MTA,
+      resolver: resolver, now: SIGNED_AT + 3600)
+
+    assert_equal [ MailAuth::Status::PASS ] * 3, [ result.spf.status, result.dkim.status, result.dmarc.status ]
+    assert_equal MailAuth::Status::TEMPERROR, result.iprev.status
+    assert_equal [ PERMITTED_IP, :ptr ], resolver.queries.last
+    assert_equal 1, resolver.queries.count { it.last == :ptr }
+    assert_match(/\A#{MTA}; iprev=temperror /, result.authentication_results.gsub("\r\n ", " "))
+  end
+
   # Every verdict travels with the identity it was reached against: an
   # `dmarc=pass` naming the wrong From: domain is worse than no header at all.
   def test_the_header_states_all_three_verdicts_against_their_identities
