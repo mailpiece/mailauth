@@ -3,6 +3,7 @@
 ## Unreleased
 
 - iprev is checked after SPF, DKIM, DMARC and ARC, so a reverse zone that never answers can't use up their time
+- DMARC: a domain's sole record is final whatever it says, and none or several fall back to the organizational domain; a missing or invalid `p=` or `sp=` reads as none
 - SPF: `allows_any`, true when a record read during the check carries `+all` and so lets any host pass
 - `SpfResult#record`: the checked domain's own SPF record as published
 - DKIM, ARC: an `l=` past the end of the body is a permerror instead of raising
@@ -18,7 +19,6 @@
 - DKIM: a `t=` in the future no longer fails the signature
 - DKIM: a verified signature past its `x=` is neutral (`expired`) instead of failing, and one whose `x=` is before its `t=` is neutral (`invalid expiration`)
 - ARC: sealing a message already at 50 sets returns it unsealed instead of raising
-- DMARC: two records at a subdomain end discovery instead of falling back to the organizational domain
 
 ## 0.6.0
 
